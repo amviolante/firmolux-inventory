@@ -12,9 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('railway') || process.env.DATABASE_URL?.includes('railway.app')
-    ? { rejectUnauthorized: false }
-    : false
+  ssl: { rejectUnauthorized: false }
 });
 
 app.use(express.json());
@@ -22,15 +20,85 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// ─── Auto-setup DB on boot ────────────────────────────────────────────────────
+async function initDB() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        code VARCHAR(10) UNIQUE NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        unit VARCHAR(5) NOT NULL DEFAULT 'kg',
+        bucket_size NUMERIC NOT NULL,
+        current_qty NUMERIC NOT NULL DEFAULT 0,
+        reorder_buckets NUMERIC NOT NULL DEFAULT 5,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS kit_components (
+        id SERIAL PRIMARY KEY,
+        kit_code VARCHAR(10) NOT NULL,
+        product_code VARCHAR(10) NOT NULL,
+        qty_per_kit NUMERIC NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS shipment_log (
+        id SERIAL PRIMARY KEY,
+        shipstation_order_id VARCHAR(50),
+        sku VARCHAR(100),
+        quantity INTEGER,
+        deductions JSONB,
+        processed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS admin_session (
+        token VARCHAR(64) PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      INSERT INTO products (code, name, unit, bucket_size, reorder_buckets) VALUES
+        ('GL',  'Grassello',      'kg', 20, 5),
+        ('AP',  'Antico Paints',  'kg', 20, 5),
+        ('MP',  'Marmorino Plus', 'kg', 20, 5),
+        ('MSM', 'Marmorino SM',   'kg', 20, 5),
+        ('MGM', 'Marmorino GM',   'kg', 20, 5),
+        ('MMB', 'Marmorino MB',   'kg', 25, 5),
+        ('IP',  'Intonaco Primo', 'kg', 25, 5),
+        ('IM',  'Intonaco Medio', 'kg', 25, 5),
+        ('BEE', 'Beeswax',        'L',   5, 2),
+        ('SAV', 'Sav',            'kg',  2, 3)
+      ON CONFLICT (code) DO NOTHING;
+    `);
+
+    await client.query(`DELETE FROM kit_components WHERE kit_code = 'KRH';`);
+    await client.query(`
+      INSERT INTO kit_components (kit_code, product_code, qty_per_kit) VALUES
+        ('KRH', 'IP',  5),
+        ('KRH', 'AP',  1),
+        ('KRH', 'BEE', 0.5);
+    `);
+
+    console.log('✅ Database ready');
+  } catch (err) {
+    console.error('DB init error:', err.message);
+  } finally {
+    client.release();
+  }
+}
+
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'firmolux2024';
 
 async function requireAuth(req, res, next) {
   const token = req.cookies?.session;
   if (!token) return res.redirect('/login');
-  const { rows } = await pool.query('SELECT token FROM admin_session WHERE token = $1', [token]);
-  if (rows.length === 0) return res.redirect('/login');
-  next();
+  try {
+    const { rows } = await pool.query('SELECT token FROM admin_session WHERE token = $1', [token]);
+    if (rows.length === 0) return res.redirect('/login');
+    next();
+  } catch (err) {
+    return res.redirect('/login');
+  }
 }
 
 // ─── Auth routes ──────────────────────────────────────────────────────────────
@@ -73,10 +141,8 @@ app.post('/api/products/:code/set-inventory', requireAuth, async (req, res) => {
   const { code } = req.params;
   const { buckets } = req.body;
   if (buckets == null || isNaN(buckets) || buckets < 0) return res.status(400).json({ error: 'Invalid bucket count' });
-
   const { rows } = await pool.query('SELECT * FROM products WHERE code = $1', [code.toUpperCase()]);
   if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
-
   const product = rows[0];
   const newQty = parseFloat(buckets) * parseFloat(product.bucket_size);
   await pool.query('UPDATE products SET current_qty = $1, updated_at = NOW() WHERE code = $2', [newQty, code.toUpperCase()]);
@@ -95,7 +161,7 @@ app.post('/api/products/:code/set-threshold', requireAuth, async (req, res) => {
 // ─── API: Manual adjustment ───────────────────────────────────────────────────
 app.post('/api/products/:code/adjust', requireAuth, async (req, res) => {
   const { code } = req.params;
-  const { delta_qty } = req.body; // positive = add, negative = remove
+  const { delta_qty } = req.body;
   if (delta_qty == null || isNaN(delta_qty)) return res.status(400).json({ error: 'Invalid delta' });
   await pool.query(
     'UPDATE products SET current_qty = GREATEST(0, current_qty + $1), updated_at = NOW() WHERE code = $2',
@@ -111,41 +177,32 @@ app.get('/api/log', requireAuth, async (req, res) => {
 });
 
 // ─── WEBHOOK: ShipStation ─────────────────────────────────────────────────────
-// ShipStation calls this when an order ships
-// Webhook secret in SS should match SHIPSTATION_WEBHOOK_SECRET env var (optional but recommended)
 app.post('/webhook/shipstation', async (req, res) => {
   try {
     const secret = process.env.SHIPSTATION_WEBHOOK_SECRET;
     if (secret) {
-      const provided = req.headers['x-shipstation-hmac-sha256'] || req.headers['authorization'];
-      if (!provided || !provided.includes(secret)) {
+      const provided = req.headers['x-shipstation-hmac-sha256'] || req.headers['authorization'] || '';
+      if (!provided.includes(secret)) {
         console.warn('Webhook auth failed');
         return res.status(401).json({ error: 'Unauthorized' });
       }
     }
 
     const payload = req.body;
-    console.log('ShipStation webhook received:', JSON.stringify(payload).slice(0, 500));
+    console.log('ShipStation webhook received:', JSON.stringify(payload).slice(0, 300));
 
-    // ShipStation sends resource_url for the order on shipment webhooks
-    // We need to fetch the actual order from SS API
     const orderData = await fetchShipStationOrder(payload);
-    if (!orderData) {
-      return res.status(200).json({ message: 'No order data to process' });
-    }
+    if (!orderData) return res.status(200).json({ message: 'No order data to process' });
 
     const deductions = [];
 
     for (const item of orderData.items || []) {
       const sku = item.sku;
       const orderQty = item.quantity || 1;
-
-      // Skip items with no SKU or known non-inventory SKUs
       if (!sku) continue;
 
       const skuUpper = sku.split('-')[0].toUpperCase();
 
-      // Handle KRH kit
       if (skuUpper === 'KRH') {
         const { rows: components } = await pool.query(
           'SELECT kc.*, p.name, p.unit, p.current_qty, p.bucket_size, p.reorder_buckets FROM kit_components kc JOIN products p ON kc.product_code = p.code WHERE kc.kit_code = $1',
@@ -161,10 +218,7 @@ app.post('/webhook/shipstation', async (req, res) => {
       }
 
       const parsed = parseSKU(sku);
-      if (!parsed) {
-        console.log(`Unrecognized SKU: ${sku}`);
-        continue;
-      }
+      if (!parsed) { console.log(`Unrecognized SKU: ${sku}`); continue; }
 
       const totalDeduct = parsed.qty * orderQty;
       await deductInventory(pool, parsed.productCode, totalDeduct);
@@ -172,7 +226,6 @@ app.post('/webhook/shipstation', async (req, res) => {
       await checkAndAlert(pool, parsed.productCode);
     }
 
-    // Log it
     await pool.query(
       'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions) VALUES ($1, $2, $3, $4)',
       [orderData.orderId || payload.resource_url, 'BATCH', 1, JSON.stringify(deductions)]
@@ -191,16 +244,12 @@ async function fetchShipStationOrder(payload) {
   const apiSecret = process.env.SHIPSTATION_API_SECRET;
 
   if (!apiKey || !apiSecret) {
-    // Dev mode: if payload has items directly, use them
     if (payload.items) return payload;
-    console.warn('No ShipStation credentials set');
     return null;
   }
 
-  // ShipStation webhook sends resource_url pointing to the shipment
   const resourceUrl = payload.resource_url;
   if (!resourceUrl) {
-    // Sometimes the full order is embedded
     if (payload.items) return payload;
     return null;
   }
@@ -220,13 +269,8 @@ async function fetchShipStationOrder(payload) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          // SS returns { shipments: [...] } for SHIP_NOTIFY webhooks
-          // Each shipment has orderKey and we need the order items
-          // For simplicity, extract items from first shipment's order
           if (parsed.shipments) {
-            const allItems = [];
             const orderId = parsed.shipments[0]?.orderId;
-            // We'd need another call to get order items; batch them
             resolve({ orderId, items: parsed.shipments.flatMap(s => s.shipmentItems || []) });
           } else if (parsed.items) {
             resolve(parsed);
@@ -253,11 +297,14 @@ async function checkAndAlert(pool, productCode) {
   const bucketsRemaining = product.current_qty / product.bucket_size;
   if (bucketsRemaining < product.reorder_buckets) {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-    if (webhookUrl) {
-      await sendSlackAlert(webhookUrl, product, product.current_qty, bucketsRemaining, product.reorder_buckets);
-    }
+    if (webhookUrl) await sendSlackAlert(webhookUrl, product, product.current_qty, bucketsRemaining, product.reorder_buckets);
   }
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log(`Firmolux Inventory running on port ${PORT}`));
+initDB().then(() => {
+  app.listen(PORT, () => console.log(`Firmolux Inventory running on port ${PORT}`));
+}).catch(err => {
+  console.error('Failed to init DB:', err);
+  process.exit(1);
+});
