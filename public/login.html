@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firmolux — Inventory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=Jost:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #F5F0E8;
+      --stone: #C8B99A;
+      --clay: #8B6F5E;
+      --dark: #1A1410;
+      --error: #8B3A3A;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--cream);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Jost', sans-serif;
+      font-weight: 300;
+      position: relative;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 50% at 20% 80%, rgba(139,111,94,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 60% at 80% 20%, rgba(200,185,154,0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .card {
+      width: 380px;
+      padding: 56px 48px 48px;
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(200,185,154,0.4);
+      position: relative;
+    }
+
+    .wordmark {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: 0.15em;
+      color: var(--dark);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--clay);
+      margin-bottom: 48px;
+    }
+
+    label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--clay);
+      margin-bottom: 8px;
+    }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 0;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--stone);
+      font-family: 'Jost', sans-serif;
+      font-size: 16px;
+      font-weight: 300;
+      color: var(--dark);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="password"]:focus { border-bottom-color: var(--clay); }
+
+    button {
+      margin-top: 36px;
+      width: 100%;
+      padding: 14px;
+      background: var(--dark);
+      color: var(--cream);
+      border: none;
+      font-family: 'Jost', sans-serif;
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover { background: var(--clay); }
+
+    .error {
+      margin-top: 16px;
+      font-size: 11px;
+      color: var(--error);
+      letter-spacing: 0.05em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="wordmark">Firmolux</div>
+    <div class="subtitle">Inventory System</div>
+    <form method="POST" action="/login">
+      <label for="password">Access Password</label>
+      <input type="password" id="password" name="password" autofocus autocomplete="current-password">
+      <button type="submit">Enter</button>
+    </form>
+    <script>
+      if (new URLSearchParams(location.search).get('error')) {
+        document.querySelector('form').insertAdjacentHTML('afterend', '<p class="error">Incorrect password</p>');
+      }
+    </script>
+  </div>
+</body>
+</html>
