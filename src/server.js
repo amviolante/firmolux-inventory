@@ -58,16 +58,16 @@ async function initDB() {
     await client.query(`
       INSERT INTO products (code, name, unit, bucket_size, reorder_buckets) VALUES
         ('GL',  'Grassello',      'kg', 20, 5),
-        ('AP',  'Antico Paints',  'kg', 20, 5),
-        ('MP',  'Marmorino Plus', 'kg', 20, 5),
-        ('MSM', 'Marmorino SM',   'kg', 20, 5),
-        ('MGM', 'Marmorino GM',   'kg', 20, 5),
-        ('MMB', 'Marmorino MB',   'kg', 25, 5),
-        ('IP',  'Intonaco Primo', 'kg', 25, 5),
-        ('IM',  'Intonaco Medio', 'kg', 25, 5),
+        ('AP',  'Anchor Primer',  'kg', 20, 5),
+        ('MP',  'Microprimer', 'kg', 20, 5),
+        ('MSM', 'Milano Silver',   'kg', 20, 5),
+        ('MGM', 'Milano Gold',   'kg', 20, 5),
+        ('MMB', 'Berlina',   'kg', 25, 5),
+        ('IP',  'Piatto', 'kg', 25, 5),
+        ('IM',  'Mezzo', 'kg', 25, 5),
         ('BEE', 'Beeswax',        'L',   5, 2),
         ('SAV', 'Sav',            'kg',  2, 3)
-      ON CONFLICT (code) DO NOTHING;
+      ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
     `);
 
     await client.query(`DELETE FROM kit_components WHERE kit_code = 'KRH';`);

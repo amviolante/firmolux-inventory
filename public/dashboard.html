@@ -3,215 +3,264 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Firmolux — Inventory Dashboard</title>
+  <title>Firmolux — Inventory</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --cream: #F5F0E8;
-      --parchment: #EDE5D4;
-      --stone: #C8B99A;
-      --clay: #8B6F5E;
-      --terracotta: #A0522D;
-      --dark: #1A1410;
-      --low: #8B3A3A;
-      --low-bg: #FDF0EE;
-      --ok: #3A6B4A;
+      --cream: #F7F3EC;
+      --white: #FFFFFF;
+      --border: #E4DDD0;
+      --border-dark: #C8BFB0;
+      --stone: #9E9082;
+      --clay: #7A5C4A;
+      --dark: #1C1714;
+      --low: #A0312D;
+      --low-bg: #FEF2F1;
+      --low-border: #F5C5C3;
+      --ok: #2D6A42;
       --ok-bg: #F0F7F2;
-      --border: rgba(200,185,154,0.35);
+      --ok-border: #B8DEC6;
     }
 
     body {
-      min-height: 100vh;
       background: var(--cream);
-      font-family: 'Jost', sans-serif;
-      font-weight: 300;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 400;
       color: var(--dark);
-    }
-
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 50% 40% at 0% 100%, rgba(139,111,94,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse 40% 50% at 100% 0%, rgba(200,185,154,0.1) 0%, transparent 60%);
-      pointer-events: none;
-      z-index: 0;
+      min-height: 100vh;
     }
 
     /* ── Header ── */
     header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background: rgba(245,240,232,0.9);
-      backdrop-filter: blur(8px);
+      background: var(--white);
       border-bottom: 1px solid var(--border);
-      padding: 0 40px;
+      padding: 0 32px;
+      height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
 
-    .wordmark {
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .logo-name {
       font-family: 'Cormorant Garamond', serif;
-      font-size: 22px;
-      font-weight: 300;
-      letter-spacing: 0.18em;
+      font-size: 20px;
+      font-weight: 400;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
+      color: var(--dark);
+    }
+
+    .logo-sub {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--stone);
     }
 
     .header-right {
       display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 20px;
     }
 
-    .last-updated {
-      font-size: 11px;
+    .sync-time {
+      font-size: 12px;
       color: var(--stone);
-      letter-spacing: 0.05em;
     }
 
-    .btn-logout {
-      font-family: 'Jost', sans-serif;
-      font-size: 10px;
-      font-weight: 400;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
+    .btn-sm {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border: 1px solid var(--border-dark);
+      background: transparent;
       color: var(--clay);
-      background: none;
-      border: 1px solid var(--stone);
-      padding: 6px 16px;
       cursor: pointer;
-      transition: all 0.2s;
+      border-radius: 4px;
+      transition: all 0.15s;
     }
-    .btn-logout:hover { background: var(--clay); color: var(--cream); border-color: var(--clay); }
+    .btn-sm:hover { background: var(--clay); color: white; border-color: var(--clay); }
 
-    /* ── Layout ── */
+    /* ── Main ── */
     main {
-      position: relative;
-      z-index: 1;
-      max-width: 1200px;
+      max-width: 1100px;
       margin: 0 auto;
-      padding: 40px 40px 80px;
+      padding: 28px 24px 60px;
     }
 
-    .page-title {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 13px;
-      font-weight: 400;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--clay);
-      margin-bottom: 32px;
-    }
-
-    /* ── Summary Strip ── */
-    .summary-strip {
+    /* ── Summary Bar ── */
+    .summary-bar {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      margin-bottom: 40px;
+      gap: 12px;
+      margin-bottom: 28px;
     }
 
-    .summary-card {
-      background: var(--cream);
-      padding: 24px 28px;
-      text-align: center;
+    .summary-tile {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
     }
+
+    .summary-tile.alert { background: var(--low-bg); border-color: var(--low-border); }
+
+    .summary-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--cream);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .summary-tile.alert .summary-icon { background: #FDE8E7; }
 
     .summary-num {
       font-family: 'Cormorant Garamond', serif;
-      font-size: 42px;
-      font-weight: 300;
+      font-size: 28px;
+      font-weight: 400;
       line-height: 1;
-      margin-bottom: 6px;
     }
 
-    .summary-num.alert { color: var(--low); }
+    .summary-tile.alert .summary-num { color: var(--low); }
 
     .summary-label {
-      font-size: 10px;
-      letter-spacing: 0.2em;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--clay);
-    }
-
-    /* ── Product Grid ── */
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 2px;
-      background: var(--border);
-      border: 1px solid var(--border);
-    }
-
-    .product-card {
-      background: var(--cream);
-      padding: 28px 32px;
-      transition: background 0.15s;
-      position: relative;
-    }
-
-    .product-card.low { background: #FDF8F6; }
-    .product-card:hover { background: #FAF6F0; }
-
-    .product-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-
-    .product-name {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 20px;
-      font-weight: 400;
-      letter-spacing: 0.02em;
-      line-height: 1.2;
-    }
-
-    .product-code {
-      font-size: 10px;
-      letter-spacing: 0.2em;
       color: var(--stone);
-      text-transform: uppercase;
       margin-top: 2px;
     }
 
-    .status-dot {
-      width: 8px;
-      height: 8px;
+    /* ── Section header ── */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--stone);
+    }
+
+    /* ── Product Table ── */
+    .product-table {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+
+    .table-header {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1.6fr 1.6fr 80px;
+      padding: 10px 20px;
+      background: var(--cream);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .th {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--stone);
+    }
+
+    .product-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1.6fr 1.6fr 80px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      align-items: center;
+      transition: background 0.1s;
+    }
+
+    .product-row:last-child { border-bottom: none; }
+    .product-row:hover { background: #FDFAF6; }
+    .product-row.low { background: var(--low-bg); }
+    .product-row.low:hover { background: #FDE8E7; }
+
+    .prod-name-wrap { display: flex; align-items: center; gap: 10px; }
+
+    .status-pill {
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: var(--ok);
       flex-shrink: 0;
-      margin-top: 6px;
-    }
-    .status-dot.low { background: var(--low); animation: pulse 1.5s ease-in-out infinite; }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.85); }
     }
 
-    /* ── Gauge ── */
-    .gauge-wrap {
-      margin-bottom: 20px;
+    .status-pill.low {
+      background: var(--low);
+      animation: blink 1.8s ease-in-out infinite;
     }
 
-    .gauge-bar {
-      height: 3px;
-      background: rgba(200,185,154,0.3);
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .prod-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--dark);
+    }
+
+    .prod-code {
+      font-size: 11px;
+      color: var(--stone);
+      margin-top: 1px;
+      font-weight: 400;
+    }
+
+    .cell {
+      font-size: 14px;
+      color: var(--dark);
+    }
+
+    .cell.muted { color: var(--stone); font-size: 13px; }
+    .cell.low { color: var(--low); font-weight: 500; }
+
+    /* ── Mini gauge ── */
+    .gauge-cell { display: flex; align-items: center; gap: 8px; }
+
+    .gauge-mini {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
       border-radius: 2px;
       overflow: hidden;
-      margin-bottom: 8px;
     }
 
     .gauge-fill {
@@ -220,301 +269,310 @@
       background: var(--clay);
       transition: width 0.4s ease;
     }
+
     .gauge-fill.low { background: var(--low); }
 
-    .gauge-labels {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-    }
-
-    .big-num {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 32px;
-      font-weight: 300;
-      line-height: 1;
-    }
-
-    .big-num.low { color: var(--low); }
-
-    .big-unit {
-      font-size: 12px;
+    .gauge-pct {
+      font-size: 11px;
       color: var(--stone);
-      margin-left: 4px;
-    }
-
-    .bucket-count {
-      font-size: 12px;
-      color: var(--stone);
+      min-width: 28px;
       text-align: right;
     }
 
-    .bucket-count span { color: var(--dark); font-weight: 400; }
-
-    /* ── Controls ── */
-    .controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .control-group label {
-      display: block;
-      font-size: 9px;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--stone);
-      margin-bottom: 5px;
-    }
-
-    .input-row {
+    /* ── Inline editable inputs ── */
+    .edit-cell {
       display: flex;
       gap: 4px;
+      align-items: center;
     }
 
-    .input-row input {
-      flex: 1;
-      min-width: 0;
-      padding: 7px 10px;
-      background: var(--parchment);
-      border: 1px solid transparent;
-      font-family: 'Jost', sans-serif;
-      font-size: 14px;
-      font-weight: 300;
+    .edit-input {
+      width: 60px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
       color: var(--dark);
+      background: var(--cream);
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.15s;
     }
-    .input-row input:focus { border-color: var(--stone); }
 
-    .input-row button {
-      padding: 7px 12px;
-      background: var(--dark);
-      color: var(--cream);
-      border: none;
-      font-family: 'Jost', sans-serif;
+    .edit-input:focus { border-color: var(--clay); background: white; }
+
+    .edit-btn {
+      padding: 4px 8px;
+      border: 1px solid var(--border-dark);
+      border-radius: 4px;
+      background: transparent;
+      font-family: 'DM Sans', sans-serif;
       font-size: 11px;
+      font-weight: 500;
+      color: var(--clay);
       cursor: pointer;
-      transition: background 0.2s;
       white-space: nowrap;
+      transition: all 0.15s;
     }
-    .input-row button:hover { background: var(--clay); }
 
-    .saved-flash {
-      position: absolute;
-      bottom: 10px;
-      right: 16px;
-      font-size: 10px;
+    .edit-btn:hover { background: var(--clay); color: white; border-color: var(--clay); }
+
+    .saved-badge {
+      font-size: 11px;
       color: var(--ok);
-      letter-spacing: 0.1em;
       opacity: 0;
       transition: opacity 0.3s;
+      white-space: nowrap;
     }
-    .saved-flash.show { opacity: 1; }
 
-    /* ── Alert banner ── */
+    .saved-badge.show { opacity: 1; }
+
+    /* ── Low stock banner ── */
     .low-banner {
+      background: var(--low-bg);
+      border: 1px solid var(--low-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
       display: none;
-      background: #FDF0EE;
-      border: 1px solid rgba(139,58,58,0.2);
-      padding: 10px 16px;
-      margin-bottom: 2px;
-      font-size: 11px;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
       color: var(--low);
-      letter-spacing: 0.05em;
-      grid-column: 1 / -1;
     }
 
-    /* ── Log ── */
-    .section-title {
-      font-size: 10px;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--clay);
-      margin: 48px 0 16px;
+    .low-banner.visible { display: flex; }
+
+    /* ── Log table ── */
+    .log-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
     }
 
-    .log-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    .log-table th {
-      text-align: left;
-      font-size: 9px;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--stone);
-      padding: 8px 12px;
+    .log-head {
+      display: grid;
+      grid-template-columns: 160px 1fr 1fr;
+      padding: 10px 20px;
+      background: var(--cream);
       border-bottom: 1px solid var(--border);
+      gap: 12px;
     }
 
-    .log-table td {
-      padding: 10px 12px;
+    .log-row {
+      display: grid;
+      grid-template-columns: 160px 1fr 1fr;
+      padding: 11px 20px;
       border-bottom: 1px solid var(--border);
-      color: var(--dark);
+      gap: 12px;
+      font-size: 13px;
     }
 
-    .log-table tr:hover td { background: rgba(200,185,154,0.08); }
+    .log-row:last-child { border-bottom: none; }
+    .log-row:hover { background: #FDFAF6; }
 
-    .loading {
+    .log-empty {
+      padding: 24px 20px;
       font-size: 13px;
       color: var(--stone);
-      letter-spacing: 0.05em;
-      padding: 40px;
-      text-align: center;
     }
 
-    /* ── Responsive ── */
-    @media (max-width: 600px) {
-      header { padding: 0 20px; }
-      main { padding: 24px 20px 60px; }
-      .summary-strip { grid-template-columns: 1fr; }
-      .grid { grid-template-columns: 1fr; }
+    @media (max-width: 700px) {
+      .table-header, .product-row { grid-template-columns: 1fr 1fr; }
+      .th:nth-child(n+3), .cell:nth-child(n+3) { display: none; }
+      .summary-bar { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="wordmark">Firmolux</div>
+  <div class="logo">
+    <span class="logo-name">Firmolux</span>
+    <span class="logo-sub">Inventory</span>
+  </div>
   <div class="header-right">
-    <span class="last-updated" id="lastUpdated">—</span>
+    <span class="sync-time" id="syncTime">—</span>
     <form method="POST" action="/logout" style="display:inline">
-      <button class="btn-logout" type="submit">Sign Out</button>
+      <button class="btn-sm" type="submit">Sign out</button>
     </form>
   </div>
 </header>
 
 <main>
-  <div class="page-title">Inventory Dashboard</div>
 
-  <div class="summary-strip">
-    <div class="summary-card">
-      <div class="summary-num" id="sumTotal">—</div>
-      <div class="summary-label">Total Products</div>
+  <div class="summary-bar">
+    <div class="summary-tile" id="tileTotal">
+      <div class="summary-icon">📦</div>
+      <div>
+        <div class="summary-num" id="sumTotal">—</div>
+        <div class="summary-label">Products tracked</div>
+      </div>
     </div>
-    <div class="summary-card">
-      <div class="summary-num alert" id="sumLow">—</div>
-      <div class="summary-label">Below Reorder Threshold</div>
+    <div class="summary-tile alert" id="tileLow">
+      <div class="summary-icon">⚠️</div>
+      <div>
+        <div class="summary-num" id="sumLow">—</div>
+        <div class="summary-label">Below reorder</div>
+      </div>
     </div>
-    <div class="summary-card">
-      <div class="summary-num" id="sumOk">—</div>
-      <div class="summary-label">Healthy Stock</div>
+    <div class="summary-tile" id="tileOk">
+      <div class="summary-icon">✅</div>
+      <div>
+        <div class="summary-num" id="sumOk">—</div>
+        <div class="summary-label">Healthy stock</div>
+      </div>
     </div>
   </div>
 
-  <div class="grid" id="productGrid">
-    <div class="loading">Loading inventory…</div>
+  <div id="lowBanner" class="low-banner">
+    ⚠️ <span id="lowBannerText"></span>
   </div>
 
-  <div class="section-title">Recent Shipment Log</div>
-  <table class="log-table">
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>Order ID</th>
-        <th>Deductions</th>
-      </tr>
-    </thead>
-    <tbody id="logBody">
-      <tr><td colspan="3" style="color:#C8B99A;padding:16px 12px">Loading…</td></tr>
-    </tbody>
-  </table>
+  <div class="section-head">
+    <div class="section-title">Products</div>
+    <div class="section-title" id="lastShipment"></div>
+  </div>
+
+  <div class="product-table">
+    <div class="table-header">
+      <div class="th">Product</div>
+      <div class="th">On Hand</div>
+      <div class="th">Buckets</div>
+      <div class="th">Set Inventory</div>
+      <div class="th">Reorder Alert</div>
+      <div class="th"></div>
+    </div>
+    <div id="productRows">
+      <div style="padding:24px 20px; color: var(--stone); font-size:13px">Loading…</div>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:32px">
+    <div class="section-title">Shipment log</div>
+  </div>
+
+  <div class="log-wrap">
+    <div class="log-head">
+      <div class="th">Time</div>
+      <div class="th">Order</div>
+      <div class="th">Deductions</div>
+    </div>
+    <div id="logRows">
+      <div class="log-empty">Loading…</div>
+    </div>
+  </div>
+
 </main>
 
 <script>
-  let products = [];
+  // Display order — matches requested order
+  const PRODUCT_ORDER = ['GL','MMB','IP','MP','AP','IM','MSM','MGM','BEE','SAV'];
+
+  let allProducts = [];
 
   async function loadProducts() {
     const res = await fetch('/api/products');
-    products = await res.json();
-    renderGrid(products);
-    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-    const low = products.filter(p => p.is_low).length;
-    document.getElementById('sumTotal').textContent = products.length;
-    document.getElementById('sumLow').textContent = low;
-    document.getElementById('sumOk').textContent = products.length - low;
+    allProducts = await res.json();
+
+    // Sort by defined order
+    allProducts.sort((a, b) => {
+      const ai = PRODUCT_ORDER.indexOf(a.code);
+      const bi = PRODUCT_ORDER.indexOf(b.code);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    renderProducts();
+    document.getElementById('syncTime').textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+    const low = allProducts.filter(p => p.is_low);
+    document.getElementById('sumTotal').textContent = allProducts.length;
+    document.getElementById('sumLow').textContent = low.length;
+    document.getElementById('sumOk').textContent = allProducts.length - low.length;
+
+    const banner = document.getElementById('lowBanner');
+    if (low.length > 0) {
+      banner.classList.add('visible');
+      document.getElementById('lowBannerText').textContent =
+        low.map(p => p.name).join(', ') + (low.length === 1 ? ' is' : ' are') + ' below reorder threshold';
+    } else {
+      banner.classList.remove('visible');
+    }
   }
 
-  function renderGrid(products) {
-    const grid = document.getElementById('productGrid');
-    if (!products.length) { grid.innerHTML = '<div class="loading">No products found</div>'; return; }
-
-    grid.innerHTML = products.map(p => {
+  function renderProducts() {
+    const container = document.getElementById('productRows');
+    container.innerHTML = allProducts.map(p => {
       const isLow = p.is_low;
-      const maxBuckets = Math.max(p.reorder_buckets * 3, p.buckets_remaining, 1);
-      const fillPct = Math.min(100, (p.buckets_remaining / maxBuckets) * 100);
-      const qty = parseFloat(p.current_qty).toFixed(1);
       const buckets = parseFloat(p.buckets_remaining).toFixed(1);
+      const qty = parseFloat(p.current_qty).toFixed(1);
+      const maxForGauge = Math.max(p.reorder_buckets * 4, p.buckets_remaining, 1);
+      const pct = Math.min(100, Math.round((p.buckets_remaining / maxForGauge) * 100));
 
       return `
-        <div class="product-card ${isLow ? 'low' : ''}" data-code="${p.code}">
-          <div class="product-header">
+        <div class="product-row ${isLow ? 'low' : ''}" data-code="${p.code}">
+          <div class="prod-name-wrap">
+            <div class="status-pill ${isLow ? 'low' : ''}"></div>
             <div>
-              <div class="product-name">${p.name}</div>
-              <div class="product-code">${p.code} · ${p.bucket_size}${p.unit} / bucket</div>
-            </div>
-            <div class="status-dot ${isLow ? 'low' : ''}"></div>
-          </div>
-
-          <div class="gauge-wrap">
-            <div class="gauge-bar">
-              <div class="gauge-fill ${isLow ? 'low' : ''}" style="width:${fillPct}%"></div>
-            </div>
-            <div class="gauge-labels">
-              <div>
-                <span class="big-num ${isLow ? 'low' : ''}">${qty}</span>
-                <span class="big-unit">${p.unit}</span>
-              </div>
-              <div class="bucket-count">
-                <span>${buckets}</span> buckets remaining
-              </div>
+              <div class="prod-name">${p.name}</div>
+              <div class="prod-code">${p.code} · ${p.bucket_size}${p.unit}/bucket</div>
             </div>
           </div>
 
-          <div class="controls">
-            <div class="control-group">
-              <label>Set Inventory (buckets)</label>
-              <div class="input-row">
-                <input type="number" min="0" step="0.5" placeholder="${buckets}" id="inv-${p.code}">
-                <button onclick="setInventory('${p.code}')">Set</button>
-              </div>
-            </div>
-            <div class="control-group">
-              <label>Reorder Alert (buckets)</label>
-              <div class="input-row">
-                <input type="number" min="0" step="1" value="${p.reorder_buckets}" id="thr-${p.code}">
-                <button onclick="setThreshold('${p.code}')">Save</button>
-              </div>
-            </div>
+          <div class="cell ${isLow ? 'low' : ''}">
+            ${qty} <span style="font-size:11px;color:var(--stone)">${p.unit}</span>
           </div>
 
-          <span class="saved-flash" id="flash-${p.code}">Saved ✓</span>
+          <div class="gauge-cell">
+            <div class="gauge-mini">
+              <div class="gauge-fill ${isLow ? 'low' : ''}" style="width:${pct}%"></div>
+            </div>
+            <div class="gauge-pct">${buckets}</div>
+          </div>
+
+          <div class="edit-cell">
+            <input class="edit-input" type="number" min="0" step="0.5"
+              placeholder="${buckets}" id="inv-${p.code}"
+              title="Enter number of buckets">
+            <button class="edit-btn" onclick="setInventory('${p.code}')">Set</button>
+          </div>
+
+          <div class="edit-cell">
+            <input class="edit-input" type="number" min="0" step="1"
+              value="${p.reorder_buckets}" id="thr-${p.code}"
+              title="Alert when below this many buckets">
+            <button class="edit-btn" onclick="setThreshold('${p.code}')">Save</button>
+          </div>
+
+          <div>
+            <span class="saved-badge" id="flash-${p.code}">Saved ✓</span>
+          </div>
         </div>
       `;
     }).join('');
   }
 
   async function setInventory(code) {
-    const val = document.getElementById(`inv-${code}`).value;
-    if (!val) return;
+    const input = document.getElementById(`inv-${code}`);
+    const val = input.value;
+    if (!val || isNaN(val)) return;
     await fetch(`/api/products/${code}/set-inventory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ buckets: parseFloat(val) })
     });
+    input.value = '';
     flash(code);
     loadProducts();
   }
 
   async function setThreshold(code) {
     const val = document.getElementById(`thr-${code}`).value;
-    if (!val) return;
+    if (!val || isNaN(val)) return;
     await fetch(`/api/products/${code}/set-threshold`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ reorder_buckets: parseFloat(val) })
     });
     flash(code);
@@ -524,35 +582,34 @@
   function flash(code) {
     const el = document.getElementById(`flash-${code}`);
     el.classList.add('show');
-    setTimeout(() => el.classList.remove('show'), 2000);
+    setTimeout(() => el.classList.remove('show'), 2200);
   }
 
   async function loadLog() {
     const res = await fetch('/api/log');
     const rows = await res.json();
-    const tbody = document.getElementById('logBody');
+    const container = document.getElementById('logRows');
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="3" style="color:#C8B99A;padding:16px 12px">No shipments processed yet</td></tr>';
+      container.innerHTML = '<div class="log-empty">No shipments processed yet. Shipments will appear here automatically.</div>';
       return;
     }
-    tbody.innerHTML = rows.map(r => {
+    container.innerHTML = rows.map(r => {
       const deductions = Array.isArray(r.deductions)
-        ? r.deductions.map(d => `${d.product} −${d.qty}`).join(', ')
-        : JSON.stringify(r.deductions);
-      const time = new Date(r.processed_at).toLocaleString();
-      return `<tr>
-        <td>${time}</td>
-        <td style="color:var(--stone);font-size:11px">${r.shipstation_order_id || '—'}</td>
-        <td>${deductions}</td>
-      </tr>`;
+        ? r.deductions.map(d => `${d.product} −${d.qty}`).join(' · ')
+        : '—';
+      const time = new Date(r.processed_at).toLocaleString([], {
+        month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'
+      });
+      return `<div class="log-row">
+        <div style="color:var(--stone)">${time}</div>
+        <div style="color:var(--stone);font-size:12px">${r.shipstation_order_id || '—'}</div>
+        <div>${deductions}</div>
+      </div>`;
     }).join('');
   }
 
-  // Initial load
   loadProducts();
   loadLog();
-
-  // Auto-refresh every 60 seconds
   setInterval(() => { loadProducts(); loadLog(); }, 60000);
 </script>
 </body>
