@@ -252,27 +252,37 @@ async function fetchShipStationOrder(payload) {
 
   return new Promise((resolve, reject) => {
     const url = new URL(resourceUrl);
+    console.log('Fetching from ShipStation:', url.hostname + url.pathname);
     https.get({
       hostname: url.hostname,
       path: url.pathname + url.search,
       headers: { 'Authorization': `Basic ${auth}` }
     }, res => {
+      console.log('ShipStation response status:', res.statusCode);
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
+          console.log('Parsed response:', JSON.stringify(parsed).slice(0, 200));
           if (parsed.shipments) {
             const orderId = parsed.shipments[0]?.orderId;
-            resolve({ orderId, items: parsed.shipments.flatMap(s => s.shipmentItems || []) });
+            const items = parsed.shipments.flatMap(s => s.shipmentItems || []);
+            console.log('Found', items.length, 'items in shipments');
+            resolve({ orderId, items });
           } else if (parsed.items) {
+            console.log('Found', parsed.items.length, 'items directly');
             resolve(parsed);
           } else {
+            console.log('No items found in response');
             resolve(null);
           }
-        } catch (e) { reject(e); }
+        } catch (e) { console.error('Parse error:', e.message); reject(e); }
       });
-    }).on('error', reject);
+    }).on('error', err => {
+      console.error('ShipStation fetch error:', err.message);
+      reject(err);
+    });
   });
 }
 
