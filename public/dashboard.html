@@ -181,7 +181,7 @@
 
     .table-header {
       display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1.6fr 1.6fr 80px;
+      grid-template-columns: 2fr 1fr 1fr 1.2fr 1.6fr 1.6fr;
       padding: 10px 20px;
       background: var(--cream);
       border-bottom: 1px solid var(--border);
@@ -198,7 +198,7 @@
 
     .product-row {
       display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1.6fr 1.6fr 80px;
+      grid-template-columns: 2fr 1fr 1fr 1.2fr 1.6fr 1.6fr;
       padding: 14px 20px;
       border-bottom: 1px solid var(--border);
       gap: 12px;
@@ -287,7 +287,7 @@
     }
 
     .edit-input {
-      width: 60px;
+      width: 80px;
       padding: 4px 8px;
       border: 1px solid var(--border);
       border-radius: 4px;
@@ -440,9 +440,9 @@
       <div class="th">Product</div>
       <div class="th">On Hand</div>
       <div class="th">Buckets</div>
+      <div class="th">Adjust (kg)</div>
       <div class="th">Set Inventory</div>
       <div class="th">Reorder Alert</div>
-      <div class="th"></div>
     </div>
     <div id="productRows">
       <div style="padding:24px 20px; color: var(--stone); font-size:13px">Loading…</div>
@@ -532,17 +532,27 @@
           </div>
 
           <div class="edit-cell">
+            <input class="edit-input" type="number" step="any"
+              placeholder="0" id="adj-${p.code}"
+              title="Enter kg to add (positive) or subtract (negative)"
+              onblur="adjustInventory('${p.code}')"
+              onkeydown="if(event.key==='Enter') this.blur()">
+          </div>
+
+          <div class="edit-cell">
             <input class="edit-input" type="number" min="0" step="0.5"
               placeholder="${buckets}" id="inv-${p.code}"
-              title="Enter number of buckets">
-            <button class="edit-btn" onclick="setInventory('${p.code}')">Set</button>
+              title="Type buckets, press Enter or click away to save"
+              onblur="setInventory('${p.code}')"
+              onkeydown="if(event.key==='Enter') this.blur()">
           </div>
 
           <div class="edit-cell">
             <input class="edit-input" type="number" min="0" step="1"
               value="${p.reorder_buckets}" id="thr-${p.code}"
-              title="Alert when below this many buckets">
-            <button class="edit-btn" onclick="setThreshold('${p.code}')">Save</button>
+              title="Type threshold, press Enter or click away to save"
+              onblur="setThreshold('${p.code}')"
+              onkeydown="if(event.key==='Enter') this.blur()">
           </div>
 
           <div>
@@ -561,6 +571,22 @@
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ buckets: parseFloat(val) })
+    });
+    input.value = '';
+    flash(code);
+    loadProducts();
+  }
+
+  async function adjustInventory(code) {
+    const input = document.getElementById(`adj-${code}`);
+    const val = input.value;
+    if (!val || isNaN(val)) return;
+    const delta = parseFloat(val);
+    if (delta === 0) return;
+    await fetch(`/api/products/${code}/adjust`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ delta_qty: delta })
     });
     input.value = '';
     flash(code);
