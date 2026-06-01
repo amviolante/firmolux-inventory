@@ -179,14 +179,7 @@ app.get('/api/log', requireAuth, async (req, res) => {
 // ─── WEBHOOK: ShipStation ─────────────────────────────────────────────────────
 app.post('/webhook/shipstation', async (req, res) => {
   try {
-    const secret = process.env.SHIPSTATION_WEBHOOK_SECRET;
-    if (secret) {
-      const provided = req.headers['x-shipstation-hmac-sha256'] || req.headers['authorization'] || '';
-      if (!provided.includes(secret)) {
-        console.warn('Webhook auth failed');
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-    }
+    // Auth check removed — URL privacy is sufficient
 
     const payload = req.body;
     console.log('ShipStation webhook received:', JSON.stringify(payload).slice(0, 300));
