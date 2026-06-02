@@ -378,6 +378,25 @@
       color: var(--stone);
     }
 
+    .deduction-badge {
+      display: inline-block;
+      background: var(--cream);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--dark);
+    }
+
+    .deduction-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
     @media (max-width: 700px) {
       .table-header, .product-row { grid-template-columns: 1fr 1fr; }
       .th:nth-child(n+3), .cell:nth-child(n+3) { display: none; }
@@ -453,15 +472,8 @@
     <div class="section-title">Shipment log</div>
   </div>
 
-  <div class="log-wrap">
-    <div class="log-head">
-      <div class="th">Time</div>
-      <div class="th">Order</div>
-      <div class="th">Deductions</div>
-    </div>
-    <div id="logRows">
-      <div class="log-empty">Loading…</div>
-    </div>
+  <div id="logContainer" style="display: flex; flex-direction: column; gap: 8px;">
+    <div class="log-empty">Loading…</div>
   </div>
 
 </main>
@@ -611,27 +623,79 @@
     setTimeout(() => el.classList.remove('show'), 2200);
   }
 
+  const PRODUCT_NAMES = {
+    'GL': 'Grassello', 'AP': 'Anchor Primer', 'MP': 'Microprimer',
+    'MSM': 'Milano Silver', 'MGM': 'Milano Gold', 'MMB': 'Berlina',
+    'IP': 'Piatto', 'IM': 'Mezzo', 'BEE': 'Beeswax', 'SAV': 'Sav'
+  };
+
   async function loadLog() {
     const res = await fetch('/api/log');
     const rows = await res.json();
-    const container = document.getElementById('logRows');
+    const container = document.getElementById('logContainer');
     if (!rows.length) {
-      container.innerHTML = '<div class="log-empty">No shipments processed yet. Shipments will appear here automatically.</div>';
+      container.innerHTML = '<div class="log-empty">No shipments processed yet.</div>';
       return;
     }
-    container.innerHTML = rows.map(r => {
-      const deductions = Array.isArray(r.deductions)
-        ? r.deductions.map(d => `${d.product} −${d.qty}`).join(' · ')
-        : '—';
-      const time = new Date(r.processed_at).toLocaleString([], {
-        month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'
-      });
-      return `<div class="log-row">
-        <div style="color:var(--stone)">${time}</div>
-        <div style="color:var(--stone);font-size:12px">${r.shipstation_order_id || '—'}</div>
-        <div>${deductions}</div>
-      </div>`;
-    }).join('');
+
+    // Group by week then by day
+    const grouped = {};
+    for (const r of rows) {
+      const date = new Date(r.processed_at);
+      const dayKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      
+      if (!grouped[weekKey]) grouped[weekKey] = {};
+      if (!grouped[weekKey][dayKey]) grouped[weekKey][dayKey] = [];
+      grouped[weekKey][dayKey].push(r);
+    }
+
+    let html = '';
+    for (const [weekKey, days] of Object.entries(grouped)) {
+      html += `<div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+        <div style="padding: 12px 16px; background: var(--cream); cursor: pointer; font-weight: 500; font-size: 12px; letter-spacing: 0.1em; display: flex; justify-content: space-between;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.querySelector('span').textContent = this.nextElementSibling.style.display === 'none' ? '▶' : '▼';">
+          Week of ${weekKey}
+          <span style="user-select: none;">▼</span>
+        </div>
+        <div style="border-top: 1px solid var(--border);">`;
+      
+      for (const [dayKey, dayRows] of Object.entries(days)) {
+        html += `<div>
+          <div style="padding: 10px 16px; background: #FAFAF6; cursor: pointer; font-size: 11px; letter-spacing: 0.1em; display: flex; justify-content: space-between; border-top: 1px solid var(--border);" onclick="const next = this.nextElementSibling; next.style.display = next.style.display === 'none' ? 'block' : 'none'; this.querySelector('span').textContent = next.style.display === 'none' ? '▶' : '▼';">
+            ${dayKey}
+            <span style="user-select: none;">▼</span>
+          </div>
+          <div style="background: white;">`;
+        
+        for (const r of dayRows) {
+          let deductionsHtml = '';
+          if (Array.isArray(r.deductions) && r.deductions.length > 0) {
+            deductionsHtml = '<div class="deduction-wrap">' + 
+              r.deductions.map(d => {
+                const name = PRODUCT_NAMES[d.product] || d.product;
+                return `<div class="deduction-badge">${name} <strong>−${d.qty}</strong></div>`;
+              }).join('') + 
+              '</div>';
+          } else {
+            deductionsHtml = '<div style="color: var(--stone); font-size: 12px;">—</div>';
+          }
+          const time = new Date(r.processed_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+          html += `<div style="border-top: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: 80px 120px 1fr; gap: 12px; align-items: start;">
+            <div style="color:var(--stone);font-size:12px">${time}</div>
+            <div style="color:var(--stone);font-size:11px">${r.shipstation_order_id || '—'}</div>
+            <div>${deductionsHtml}</div>
+          </div>`;
+        }
+        
+        html += `</div></div>`;
+      }
+      
+      html += `</div></div>`;
+    }
+    
+    container.innerHTML = html;
   }
 
   loadProducts();
