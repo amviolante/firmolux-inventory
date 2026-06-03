@@ -22,6 +22,7 @@ const NAME_TO_CODE = {
   'grassello': 'GL',
   'anchor primer': 'AP',
   'microprimer': 'MP',
+  'mprimer': 'MP',  // Amazon uses "Mprimer" instead of "Microprimer"
   'milano silver': 'MSM',
   'milano gold': 'MGM',
   'berlina': 'MMB',
