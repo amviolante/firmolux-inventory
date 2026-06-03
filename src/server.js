@@ -250,9 +250,13 @@ app.post('/webhook/shipstation', async (req, res) => {
       failedSkus: failedSkus || null
     };
 
+    const displayId = orderData.orderNumber ? `#${orderData.orderNumber}` : (orderData.orderId ? `#${orderData.orderId}` : 'Unknown');
+    const displayName = orderData.customerName ? ` - ${orderData.customerName}` : '';
+    const fullIdentifier = displayId + displayName;
+    
     await pool.query(
       'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions) VALUES ($1, $2, $3, $4)',
-      [orderData.orderId || payload.resource_url, 'BATCH', 1, JSON.stringify(logData)]
+      [fullIdentifier, 'BATCH', 1, JSON.stringify(logData)]
     );
     console.log('✅ Saved to log');
 
@@ -301,11 +305,14 @@ async function fetchShipStationOrder(payload) {
         try {
           const parsed = JSON.parse(data);
           console.log('Parsed response:', JSON.stringify(parsed).slice(0, 200));
-          if (parsed.shipments) {
-            const orderId = parsed.shipments[0]?.orderId;
+          if (parsed.shipments && parsed.shipments.length > 0) {
+            const shipment = parsed.shipments[0];
+            const orderId = shipment.orderId;
+            const orderNumber = shipment.orderNumber;
+            const customerName = shipment.customerName;
             const items = parsed.shipments.flatMap(s => s.shipmentItems || []);
-            console.log('Found', items.length, 'items in shipments');
-            resolve({ orderId, items });
+            console.log(`Found ${items.length} items in order #${orderNumber} (${customerName})`);
+            resolve({ orderId, orderNumber, customerName, items });
           } else if (parsed.items) {
             console.log('Found', parsed.items.length, 'items directly');
             resolve(parsed);
