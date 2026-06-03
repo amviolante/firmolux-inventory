@@ -472,6 +472,11 @@
     <div class="section-title">Shipment log</div>
   </div>
 
+  <div id="suspectsContainer" style="display: none; background: #FFF5F0; border: 1px solid #F5C5C3; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+    <div style="font-size: 12px; font-weight: 500; letter-spacing: 0.1em; color: #A0312D; text-transform: uppercase; margin-bottom: 12px;">⚠️ Suspicious Deductions (Likely Bad Data)</div>
+    <div id="suspectsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+  </div>
+
   <div id="logContainer" style="display: flex; flex-direction: column; gap: 8px;">
     <div class="log-empty">Loading…</div>
   </div>
@@ -629,13 +634,56 @@
     'IP': 'Piatto', 'IM': 'Mezzo', 'BEE': 'Beeswax', 'SAV': 'Sav'
   };
 
+  const BUCKET_SIZES = {
+    'GL': 20, 'AP': 20, 'MP': 20, 'MSM': 20, 'MGM': 20,
+    'MMB': 25, 'IP': 25, 'IM': 25,
+    'BEE': 5, 'SAV': 2
+  };
+
   async function loadLog() {
     const res = await fetch('/api/log');
     const rows = await res.json();
     const container = document.getElementById('logContainer');
+    const suspectsContainer = document.getElementById('suspectsContainer');
+    const suspectsList = document.getElementById('suspectsList');
+    
     if (!rows.length) {
       container.innerHTML = '<div class="log-empty">No shipments processed yet.</div>';
       return;
+    }
+
+    // Find suspicious deductions (product deducted > bucket size in single order)
+    const suspects = [];
+    for (const r of rows) {
+      if (!Array.isArray(r.deductions)) continue;
+      for (const d of r.deductions) {
+        const bucketSize = BUCKET_SIZES[d.product] || 20;
+        if (d.qty > bucketSize * 2) {  // More than 2 buckets in one order is suspicious
+          suspects.push({
+            ...r,
+            suspectDeduction: d,
+            reason: `${PRODUCT_NAMES[d.product]} deducted ${d.qty} (> 2 buckets of ${bucketSize}kg)`
+          });
+        }
+      }
+    }
+
+    // Display suspects
+    if (suspects.length > 0) {
+      suspectsContainer.style.display = 'block';
+      suspectsList.innerHTML = suspects.map(s => {
+        const time = new Date(s.processed_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const productName = PRODUCT_NAMES[s.suspectDeduction.product];
+        return `<div style="background: white; border: 1px solid #F5C5C3; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 12px; font-weight: 500; color: var(--dark);">${time} · ${productName} −${s.suspectDeduction.qty}kg (Order ${s.shipstation_order_id})</div>
+            <div style="font-size: 11px; color: var(--stone); margin-top: 2px;">${s.reason}</div>
+          </div>
+          <button onclick="reverseSuspect('${s.suspectDeduction.product}', ${s.suspectDeduction.qty})" style="padding: 6px 12px; background: #A0312D; color: white; border: none; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; white-space: nowrap; margin-left: 12px;">Reverse</button>
+        </div>`;
+      }).join('');
+    } else {
+      suspectsContainer.style.display = 'none';
     }
 
     // Group by week then by day
@@ -671,15 +719,24 @@
         
         for (const r of dayRows) {
           let deductionsHtml = '';
-          if (Array.isArray(r.deductions) && r.deductions.length > 0) {
+          const logEntry = typeof r.deductions === 'string' ? JSON.parse(r.deductions) : r.deductions;
+          const deductionsArray = Array.isArray(logEntry) ? logEntry : (logEntry?.deductions || []);
+          const failedSkus = logEntry?.failedSkus;
+          
+          if (deductionsArray.length > 0) {
             deductionsHtml = '<div class="deduction-wrap">' + 
-              r.deductions.map(d => {
+              deductionsArray.map(d => {
                 const name = PRODUCT_NAMES[d.product] || d.product;
                 return `<div class="deduction-badge">${name} <strong>−${d.qty}</strong></div>`;
               }).join('') + 
               '</div>';
+          } else if (failedSkus) {
+            deductionsHtml = `<div style="background: #FFF0F0; border: 1px solid #F5C5C3; border-radius: 4px; padding: 6px 10px; display: inline-block;">
+              <div style="color: #A0312D; font-size: 11px; font-weight: 500;">Unparseable SKUs:</div>
+              <div style="color: #8B3A3A; font-size: 11px; margin-top: 2px; font-family: monospace;">${failedSkus}</div>
+            </div>`;
           } else {
-            deductionsHtml = '<div style="color: var(--stone); font-size: 12px;">—</div>';
+            deductionsHtml = '<div style="color: var(--stone); font-size: 12px;">No items or all unparseable</div>';
           }
           const time = new Date(r.processed_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
           html += `<div style="border-top: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: 80px 120px 1fr; gap: 12px; align-items: start;">
@@ -696,6 +753,19 @@
     }
     
     container.innerHTML = html;
+  }
+
+  async function reverseSuspect(productCode, deductedQty) {
+    if (!confirm(`Reverse ${PRODUCT_NAMES[productCode]} −${deductedQty}kg deduction?`)) return;
+    // Add back the full amount
+    await fetch(`/api/products/${productCode}/adjust`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ delta_qty: deductedQty })
+    });
+    alert('Reversed! Inventory updated.');
+    loadProducts();
+    loadLog();
   }
 
   loadProducts();

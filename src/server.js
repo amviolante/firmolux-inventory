@@ -164,7 +164,7 @@ app.post('/api/products/:code/adjust', requireAuth, async (req, res) => {
   const { delta_qty } = req.body;
   if (delta_qty == null || isNaN(delta_qty)) return res.status(400).json({ error: 'Invalid delta' });
   await pool.query(
-    'UPDATE products SET current_qty = GREATEST(0, current_qty + $1), updated_at = NOW() WHERE code = $2',
+    'UPDATE products SET current_qty = current_qty + $1, updated_at = NOW() WHERE code = $2',
     [delta_qty, code.toUpperCase()]
   );
   res.json({ success: true });
@@ -188,43 +188,76 @@ app.post('/webhook/shipstation', async (req, res) => {
     if (!orderData) return res.status(200).json({ message: 'No order data to process' });
 
     const deductions = [];
+    let processedCount = 0;
+
+    console.log('Processing items from order:', orderData.orderId);
+    console.log('Items count:', (orderData.items || []).length);
 
     for (const item of orderData.items || []) {
       const sku = item.sku;
       const orderQty = item.quantity || 1;
-      if (!sku) continue;
+      if (!sku) {
+        console.log('⊘ Skipping item with no SKU');
+        continue;
+      }
 
+      console.log(`→ Processing: SKU="${sku}", qty=${orderQty}`);
       const skuUpper = sku.split('-')[0].toUpperCase();
 
       if (skuUpper === 'KRH') {
+        console.log('  → Kit detected: KRH');
         const { rows: components } = await pool.query(
           'SELECT kc.*, p.name, p.unit, p.current_qty, p.bucket_size, p.reorder_buckets FROM kit_components kc JOIN products p ON kc.product_code = p.code WHERE kc.kit_code = $1',
           ['KRH']
         );
         for (const comp of components) {
           const deductQty = comp.qty_per_kit * orderQty;
+          console.log(`    ✓ ${comp.product_code} -${deductQty}`);
           await deductInventory(pool, comp.product_code, deductQty);
           deductions.push({ product: comp.product_code, qty: deductQty, reason: `KRH x${orderQty}` });
           await checkAndAlert(pool, comp.product_code);
         }
+        processedCount++;
         continue;
       }
 
       const parsed = parseSKU(sku);
-      if (!parsed) { console.log(`Unrecognized SKU: ${sku}`); continue; }
+      if (!parsed) { 
+        console.log(`  ❌ Could not parse SKU`);
+        continue; 
+      }
 
       const totalDeduct = parsed.qty * orderQty;
+      console.log(`  ✓ ${parsed.productCode} -${totalDeduct}kg`);
       await deductInventory(pool, parsed.productCode, totalDeduct);
       deductions.push({ product: parsed.productCode, qty: totalDeduct, sku, orderQty });
       await checkAndAlert(pool, parsed.productCode);
+      processedCount++;
     }
+
+    console.log(`Processed ${processedCount} items, ${deductions.length} deductions recorded`);
+
+    // Include both successful deductions and failed SKUs in the log
+    const allSkus = (orderData.items || []).map(item => item.sku || 'UNKNOWN').join(' | ');
+    const failedSkus = (orderData.items || [])
+      .filter(item => item.sku && !parseSKU(item.sku))
+      .map(item => item.sku)
+      .join(' | ');
+    
+    const logData = {
+      deductions,
+      allSkus,
+      failedSkus: failedSkus || null
+    };
 
     await pool.query(
       'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions) VALUES ($1, $2, $3, $4)',
-      [orderData.orderId || payload.resource_url, 'BATCH', 1, JSON.stringify(deductions)]
+      [orderData.orderId || payload.resource_url, 'BATCH', 1, JSON.stringify(logData)]
     );
+    console.log('✅ Saved to log');
 
     res.json({ success: true, deductions });
+
   } catch (err) {
     console.error('Webhook error:', err);
     res.status(500).json({ error: 'Internal error' });
@@ -236,7 +269,10 @@ async function fetchShipStationOrder(payload) {
   const apiKey = process.env.SHIPSTATION_API_KEY;
   const apiSecret = process.env.SHIPSTATION_API_SECRET;
 
+  console.log('fetchShipStationOrder called, have credentials:', !!(apiKey && apiSecret));
+
   if (!apiKey || !apiSecret) {
+    console.log('No API credentials, checking payload for items directly');
     if (payload.items) return payload;
     return null;
   }
@@ -288,7 +324,7 @@ async function fetchShipStationOrder(payload) {
 
 async function deductInventory(pool, productCode, qty) {
   await pool.query(
-    'UPDATE products SET current_qty = GREATEST(0, current_qty - $1), updated_at = NOW() WHERE code = $2',
+    'UPDATE products SET current_qty = current_qty - $1, updated_at = NOW() WHERE code = $2',
     [qty, productCode]
   );
 }
