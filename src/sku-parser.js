@@ -1,49 +1,118 @@
-// Parses ShipStation SKUs into { productCode, qty }
-// Examples:
-//   GL04KG-BM1093  → { productCode: 'GL',  qty: 4 }
-//   MMB25KG-SW123  → { productCode: 'MMB', qty: 25 }
-//   BEE5           → { productCode: 'BEE', qty: 5 }
-//   BEE1           → { productCode: 'BEE', qty: 1 }
-//   GL01KG-BM2034-30 → { productCode: 'GL', qty: 1 }
-//   GL20KG-...     → { productCode: 'GL',  qty: 20 }
-//   MMB01          → { productCode: 'MMB', qty: 1 }
-//   SAV            → { productCode: 'SAV', qty: 2 }
-//   KRH            → { productCode: 'KRH', qty: 1 }
-//   GL08           → { productCode: 'GL',  qty: 8 }
+// SKU parser handling both formats:
+// 1. Code format: GL04, MP04KG, MMB25KG-BM123, IP99
+// 2. Amazon format: Grassello4kg, Microprimer4kg, Berlina25kg, Piatto1kg
 
-const KNOWN_PREFIXES = ['MMB', 'MSM', 'MGM', 'BEE', 'SAV', 'KRH', 'GL', 'AP', 'MP', 'IP', 'IM'];
+const PRODUCT_INFO = {
+  // Code → { name, quantities }
+  'GL': { name: 'Grassello', quantities: [1, 4, 8, 12, 20, 99] },
+  'AP': { name: 'Anchor Primer', quantities: [1, 4, 8, 12, 20, 99] },
+  'MP': { name: 'Microprimer', quantities: [1, 4, 8, 12, 20, 99] },
+  'MSM': { name: 'Milano Silver', quantities: [1, 4, 8, 12, 20, 99] },
+  'MGM': { name: 'Milano Gold', quantities: [1, 4, 8, 12, 20, 99] },
+  'MMB': { name: 'Berlina', quantities: [1, 5, 10, 15, 25, 99] },
+  'IP': { name: 'Piatto', quantities: [1, 5, 10, 15, 25, 99] },
+  'IM': { name: 'Mezzo', quantities: [1, 5, 10, 15, 25, 99] },
+  'BEE': { name: 'Beeswax', quantities: [1, 5, 99] },
+  'SAV': { name: 'Sav', quantities: [2], fixed: true },
+  'KRH': { name: 'Kit', quantities: [1], fixed: true },
+};
 
-// Products that are always a fixed qty regardless of SKU suffix
-const FIXED_QTY = {
-  SAV: 2,
-  KRH: 1, // handled as kit, qty multiplied by order quantity
+// Name → code (for Amazon format)
+const NAME_TO_CODE = {
+  'grassello': 'GL',
+  'anchor primer': 'AP',
+  'microprimer': 'MP',
+  'milano silver': 'MSM',
+  'milano gold': 'MGM',
+  'berlina': 'MMB',
+  'piatto': 'IP',
+  'mezzo': 'IM',
+  'beeswax': 'BEE',
+  'sav': 'SAV',
+  'savon': 'SAV',
+  'kit': 'KRH',
 };
 
 function parseSKU(rawSku) {
-  if (!rawSku || typeof rawSku !== 'string') return null;
-
-  // Strip everything after the first '-' (tint code, batch ref, etc.)
-  const sku = rawSku.split('-')[0].trim().toUpperCase();
-
-  // Find matching prefix (try longest first)
-  const prefix = KNOWN_PREFIXES.find(p => sku.startsWith(p));
-  if (!prefix) return null;
-
-  // Fixed-qty products
-  if (FIXED_QTY[prefix] !== undefined) {
-    return { productCode: prefix, qty: FIXED_QTY[prefix] };
+  if (!rawSku || typeof rawSku !== 'string') {
+    console.log(`[SKU] Invalid input: ${rawSku}`);
+    return null;
   }
 
-  // Extract numeric portion after prefix
-  // e.g. GL04KG → '04', GL08 → '08', BEE5 → '5', MMB25KG → '25'
-  const rest = sku.slice(prefix.length);
-  const match = rest.match(/^0*(\d+(?:\.\d+)?)/);
-  if (!match) return null;
+  const sku = rawSku.trim();
+  console.log(`[SKU] Parsing: "${sku}"`);
 
-  const qty = parseFloat(match[1]);
-  if (isNaN(qty) || qty <= 0) return null;
+  // Try code format first: "GL04", "MMB25KG", etc.
+  const upperSku = sku.split('-')[0].toUpperCase();
+  const prefixes = Object.keys(PRODUCT_INFO).sort((a, b) => b.length - a.length);
 
-  return { productCode: prefix, qty };
+  for (const prefix of prefixes) {
+    if (!upperSku.startsWith(prefix)) continue;
+
+    const info = PRODUCT_INFO[prefix];
+
+    // Fixed-quantity products
+    if (info.fixed) {
+      console.log(`[SKU] ✓ (Code) ${info.name} (fixed qty: ${info.quantities[0]})`);
+      return { productCode: prefix, qty: info.quantities[0] };
+    }
+
+    // Extract number
+    const rest = upperSku.slice(prefix.length);
+    const match = rest.match(/^(\d+)/);
+
+    if (!match) continue;
+
+    let qty = parseInt(match[1], 10);
+
+    if (!info.quantities.includes(qty)) {
+      console.log(`[SKU] ✗ (Code) ${prefix} qty=${qty} not in valid set: ${info.quantities.join(',')}`);
+      continue;
+    }
+
+    if (qty === 99) {
+      qty = 1;
+      console.log(`[SKU] ✓ (Code) ${info.name} qty=99 → 1kg`);
+    } else {
+      console.log(`[SKU] ✓ (Code) ${info.name} qty=${qty}kg`);
+    }
+
+    return { productCode: prefix, qty };
+  }
+
+  // Try Amazon format: "Microprimer4kg", "Grassello20kg", etc.
+  const amazonMatch = sku.match(/^([a-zA-Z\s]+?)(\d+)(kg|l)?$/i);
+  if (amazonMatch) {
+    const name = amazonMatch[1].trim().toLowerCase();
+    let qty = parseInt(amazonMatch[2], 10);
+    const unit = amazonMatch[3] ? amazonMatch[3].toLowerCase() : 'kg';
+
+    const productCode = NAME_TO_CODE[name];
+    if (!productCode) {
+      console.log(`[SKU] ✗ Amazon format but unknown product: "${name}"`);
+      return null;
+    }
+
+    const info = PRODUCT_INFO[productCode];
+    if (!info.quantities.includes(qty)) {
+      console.log(`[SKU] ✗ ${productCode} qty=${qty} not in valid set: ${info.quantities.join(',')}`);
+      return null;
+    }
+
+    if (qty === 99) {
+      qty = 1;
+      console.log(`[SKU] ✓ (Amazon) ${info.name} qty=99 → 1${unit}`);
+    } else {
+      console.log(`[SKU] ✓ (Amazon) ${info.name} qty=${qty}${unit}`);
+    }
+
+    return { productCode, qty };
+  }
+
+
+
+  console.log(`[SKU] ✗ No format matched for: ${sku}`);
+  return null;
 }
 
-module.exports = { parseSKU, KNOWN_PREFIXES };
+module.exports = { parseSKU, PRODUCT_INFO };
