@@ -12,7 +12,7 @@ const PRODUCT_INFO = {
   'MMB': { name: 'Berlina', quantities: [1, 5, 10, 15, 25, 99] },
   'IP': { name: 'Piatto', quantities: [1, 5, 10, 15, 25, 99] },
   'IM': { name: 'Mezzo', quantities: [1, 5, 10, 15, 25, 99] },
-  'BEE': { name: 'Beeswax', quantities: [1, 5, 99] },
+  'BEE': { name: 'Beeswax', quantities: [1, 2, 5, 99] },
   'SAV': { name: 'Sav', quantities: [2], fixed: true },
   'KRH': { name: 'Kit', quantities: [1], fixed: true },
 };
