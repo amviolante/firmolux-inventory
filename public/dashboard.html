@@ -653,35 +653,42 @@
     }
 
     // Find suspicious deductions (product deducted > bucket size in single order)
+    const dismissed = JSON.parse(localStorage.getItem('dismissedSuspects') || '[]');
     const suspects = [];
     for (const r of rows) {
       if (!Array.isArray(r.deductions)) continue;
       for (const d of r.deductions) {
         const bucketSize = BUCKET_SIZES[d.product] || 20;
         if (d.qty > bucketSize * 2) {  // More than 2 buckets in one order is suspicious
+          // Create unique ID: order + product + qty (unlikely to have exact duplicates)
+          const suspectId = `${r.shipstation_order_id}-${d.product}-${d.qty}`;
           suspects.push({
             ...r,
             suspectDeduction: d,
+            suspectId,
             reason: `${PRODUCT_NAMES[d.product]} deducted ${d.qty} (> 2 buckets of ${bucketSize}kg)`
           });
         }
       }
     }
 
+    // Filter out dismissed suspects by ID
+    const activeSuspects = suspects.filter(s => !dismissed.includes(s.suspectId));
+
     // Display suspects
-    if (suspects.length > 0) {
+    if (activeSuspects.length > 0) {
       suspectsContainer.style.display = 'block';
-      suspectsList.innerHTML = suspects.map((s, idx) => {
+      suspectsList.innerHTML = activeSuspects.map((s) => {
         const time = new Date(s.processed_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
         const productName = PRODUCT_NAMES[s.suspectDeduction.product];
-        return `<div id="suspect-${idx}" style="background: white; border: 1px solid #F5C5C3; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+        return `<div id="suspect-${s.suspectId}" style="background: white; border: 1px solid #F5C5C3; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
           <div style="flex: 1;">
             <div style="font-size: 12px; font-weight: 500; color: var(--dark);">${time} · ${productName} −${s.suspectDeduction.qty}kg (Order ${s.shipstation_order_id})</div>
             <div style="font-size: 11px; color: var(--stone); margin-top: 2px;">${s.reason}</div>
           </div>
           <div style="display: flex; gap: 8px; white-space: nowrap;">
             <button onclick="reverseSuspect('${s.suspectDeduction.product}', ${s.suspectDeduction.qty}, ${idx})" style="padding: 6px 12px; background: #A0312D; color: white; border: none; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer;">Reverse</button>
-            <button onclick="dismissSuspect(${idx})" style="padding: 8px 12px; background: #DDD; color: #333; border: 1px solid #CCC; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; line-height: 1; transition: background 0.2s;" onmouseover="this.style.background='#BBB'" onmouseout="this.style.background='#DDD'">✕</button>
+            <button onclick="dismissSuspect('${s.suspectId}')" style="padding: 8px 12px; background: #DDD; color: #333; border: 1px solid #CCC; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; line-height: 1; transition: background 0.2s;" onmouseover="this.style.background='#BBB'" onmouseout="this.style.background='#DDD'">✕</button>
           </div>
         </div>`;
       }).join('');
@@ -758,9 +765,13 @@
     container.innerHTML = html;
   }
 
-  function dismissSuspect(idx) {
-    const el = document.getElementById(`suspect-${idx}`);
+  function dismissSuspect(suspectId) {
+    const el = document.getElementById(`suspect-${suspectId}`);
     if (el) el.style.display = 'none';
+    // Remember this dismiss in localStorage by unique ID
+    const dismissed = JSON.parse(localStorage.getItem('dismissedSuspects') || '[]');
+    if (!dismissed.includes(suspectId)) dismissed.push(suspectId);
+    localStorage.setItem('dismissedSuspects', JSON.stringify(dismissed));
   }
 
   async function reverseSuspect(productCode, deductedQty, idx) {
