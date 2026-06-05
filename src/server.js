@@ -70,12 +70,16 @@ async function initDB() {
       ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
     `);
 
-    await client.query(`DELETE FROM kit_components WHERE kit_code = 'KRH';`);
+    await client.query(`DELETE FROM kit_components WHERE kit_code IN ('KRH', 'KIT-T', 'KIT-U');`);
     await client.query(`
       INSERT INTO kit_components (kit_code, product_code, qty_per_kit) VALUES
         ('KRH', 'IP',  5),
         ('KRH', 'AP',  1),
-        ('KRH', 'BEE', 0.5);
+        ('KRH', 'BEE', 0.5),
+        ('KIT-T', 'GL', 1),
+        ('KIT-T', 'MMB', 1),
+        ('KIT-U', 'GL', 1),
+        ('KIT-U', 'MMB', 1);
     `);
 
     console.log('✅ Database ready');
@@ -204,17 +208,18 @@ app.post('/webhook/shipstation', async (req, res) => {
       console.log(`→ Processing: SKU="${sku}", qty=${orderQty}`);
       const skuUpper = sku.split('-')[0].toUpperCase();
 
-      if (skuUpper === 'KRH') {
-        console.log('  → Kit detected: KRH');
+      if (skuUpper === 'KRH' || skuUpper === 'KIT-T' || skuUpper === 'KIT-U') {
+        const kitName = skuUpper;
+        console.log(`  → Kit detected: ${kitName}`);
         const { rows: components } = await pool.query(
           'SELECT kc.*, p.name, p.unit, p.current_qty, p.bucket_size, p.reorder_buckets FROM kit_components kc JOIN products p ON kc.product_code = p.code WHERE kc.kit_code = $1',
-          ['KRH']
+          [kitName]
         );
         for (const comp of components) {
           const deductQty = comp.qty_per_kit * orderQty;
           console.log(`    ✓ ${comp.product_code} -${deductQty}`);
           await deductInventory(pool, comp.product_code, deductQty);
-          deductions.push({ product: comp.product_code, qty: deductQty, reason: `KRH x${orderQty}` });
+          deductions.push({ product: comp.product_code, qty: deductQty, reason: `${kitName} x${orderQty}` });
           await checkAndAlert(pool, comp.product_code);
         }
         processedCount++;
@@ -311,7 +316,13 @@ async function fetchShipStationOrder(payload) {
             const orderNumber = shipment.orderNumber;
             const customerName = shipment.customerName;
             const items = parsed.shipments.flatMap(s => s.shipmentItems || []);
-            console.log(`Found ${items.length} items in order #${orderNumber} (${customerName})`);
+            console.log('=== ShipStation Shipment Object ===');
+            console.log('Available fields:', Object.keys(shipment).join(', '));
+            console.log('orderId:', orderId);
+            console.log('orderNumber:', orderNumber);
+            console.log('customerName:', customerName);
+            console.log('customerEmail:', shipment.customerEmail);
+            console.log('Found', items.length, 'items');
             resolve({ orderId, orderNumber, customerName, items });
           } else if (parsed.items) {
             console.log('Found', parsed.items.length, 'items directly');

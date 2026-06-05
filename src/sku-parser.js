@@ -15,6 +15,8 @@ const PRODUCT_INFO = {
   'BEE': { name: 'Beeswax', quantities: [1, 2, 5, 99] },
   'SAV': { name: 'Sav', quantities: [2], fixed: true },
   'KRH': { name: 'Kit', quantities: [1], fixed: true },
+  'KIT-T': { name: 'Kit-T', quantities: [1], fixed: true },
+  'KIT-U': { name: 'Kit-U', quantities: [1], fixed: true },
 };
 
 // Name → code (for Amazon format)
@@ -32,6 +34,8 @@ const NAME_TO_CODE = {
   'sav': 'SAV',
   'savon': 'SAV',
   'kit': 'KRH',
+  'kit-t': 'KIT-T',
+  'kit-u': 'KIT-U',
 };
 
 function parseSKU(rawSku) {
