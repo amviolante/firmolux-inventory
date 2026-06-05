@@ -149,7 +149,9 @@ app.post('/api/products/:code/set-inventory', requireAuth, async (req, res) => {
   if (rows.length === 0) return res.status(404).json({ error: 'Product not found' });
   const product = rows[0];
   const newQty = parseFloat(buckets) * parseFloat(product.bucket_size);
-  await pool.query('UPDATE products SET current_qty = $1, updated_at = NOW() WHERE code = $2', [newQty, code.toUpperCase()]);
+  const upper = code.toUpperCase();
+  await pool.query('UPDATE products SET current_qty = $1, updated_at = NOW() WHERE code = $2', [newQty, upper]);
+  await checkAndAlert(pool, upper);
   res.json({ success: true, current_qty: newQty, buckets_remaining: parseFloat(buckets) });
 });
 
@@ -158,7 +160,9 @@ app.post('/api/products/:code/set-threshold', requireAuth, async (req, res) => {
   const { code } = req.params;
   const { reorder_buckets } = req.body;
   if (reorder_buckets == null || isNaN(reorder_buckets) || reorder_buckets < 0) return res.status(400).json({ error: 'Invalid threshold' });
-  await pool.query('UPDATE products SET reorder_buckets = $1 WHERE code = $2', [reorder_buckets, code.toUpperCase()]);
+  const upper = code.toUpperCase();
+  await pool.query('UPDATE products SET reorder_buckets = $1 WHERE code = $2', [reorder_buckets, upper]);
+  await checkAndAlert(pool, upper);
   res.json({ success: true });
 });
 
@@ -167,10 +171,12 @@ app.post('/api/products/:code/adjust', requireAuth, async (req, res) => {
   const { code } = req.params;
   const { delta_qty } = req.body;
   if (delta_qty == null || isNaN(delta_qty)) return res.status(400).json({ error: 'Invalid delta' });
+  const upper = code.toUpperCase();
   await pool.query(
     'UPDATE products SET current_qty = current_qty + $1, updated_at = NOW() WHERE code = $2',
-    [delta_qty, code.toUpperCase()]
+    [delta_qty, upper]
   );
+  await checkAndAlert(pool, upper);
   res.json({ success: true });
 });
 
