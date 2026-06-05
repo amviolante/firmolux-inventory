@@ -351,10 +351,15 @@ async function checkAndAlert(pool, productCode) {
   const { rows } = await pool.query('SELECT * FROM products WHERE code = $1', [productCode]);
   if (rows.length === 0) return;
   const product = rows[0];
-  const bucketsRemaining = product.current_qty / product.bucket_size;
+  const currentQty = parseFloat(product.current_qty) || 0;
+  const bucketSize = parseFloat(product.bucket_size) || 1;
+  const bucketsRemaining = currentQty / bucketSize;
   if (bucketsRemaining < product.reorder_buckets) {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-    if (webhookUrl) await sendSlackAlert(webhookUrl, product, product.current_qty, bucketsRemaining, product.reorder_buckets);
+    if (webhookUrl) {
+      console.log(`🔔 Checking alert for ${productCode}: ${bucketsRemaining.toFixed(1)} buckets < ${product.reorder_buckets} threshold`);
+      await sendSlackAlert(webhookUrl, product, currentQty, bucketsRemaining, product.reorder_buckets);
+    }
   }
 }
 
