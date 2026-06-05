@@ -671,15 +671,18 @@
     // Display suspects
     if (suspects.length > 0) {
       suspectsContainer.style.display = 'block';
-      suspectsList.innerHTML = suspects.map(s => {
+      suspectsList.innerHTML = suspects.map((s, idx) => {
         const time = new Date(s.processed_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
         const productName = PRODUCT_NAMES[s.suspectDeduction.product];
-        return `<div style="background: white; border: 1px solid #F5C5C3; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center;">
-          <div>
+        return `<div id="suspect-${idx}" style="background: white; border: 1px solid #F5C5C3; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="flex: 1;">
             <div style="font-size: 12px; font-weight: 500; color: var(--dark);">${time} · ${productName} −${s.suspectDeduction.qty}kg (Order ${s.shipstation_order_id})</div>
             <div style="font-size: 11px; color: var(--stone); margin-top: 2px;">${s.reason}</div>
           </div>
-          <button onclick="reverseSuspect('${s.suspectDeduction.product}', ${s.suspectDeduction.qty})" style="padding: 6px 12px; background: #A0312D; color: white; border: none; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; white-space: nowrap; margin-left: 12px;">Reverse</button>
+          <div style="display: flex; gap: 8px; white-space: nowrap;">
+            <button onclick="reverseSuspect('${s.suspectDeduction.product}', ${s.suspectDeduction.qty}, ${idx})" style="padding: 6px 12px; background: #A0312D; color: white; border: none; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer;">Reverse</button>
+            <button onclick="dismissSuspect(${idx})" style="padding: 8px 12px; background: #DDD; color: #333; border: 1px solid #CCC; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; line-height: 1; transition: background 0.2s;" onmouseover="this.style.background='#BBB'" onmouseout="this.style.background='#DDD'">✕</button>
+          </div>
         </div>`;
       }).join('');
     } else {
@@ -755,7 +758,12 @@
     container.innerHTML = html;
   }
 
-  async function reverseSuspect(productCode, deductedQty) {
+  function dismissSuspect(idx) {
+    const el = document.getElementById(`suspect-${idx}`);
+    if (el) el.style.display = 'none';
+  }
+
+  async function reverseSuspect(productCode, deductedQty, idx) {
     if (!confirm(`Reverse ${PRODUCT_NAMES[productCode]} −${deductedQty}kg deduction?`)) return;
     // Add back the full amount
     await fetch(`/api/products/${productCode}/adjust`, {
@@ -763,7 +771,7 @@
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ delta_qty: deductedQty })
     });
-    alert('Reversed! Inventory updated.');
+    dismissSuspect(idx);
     loadProducts();
     loadLog();
   }
