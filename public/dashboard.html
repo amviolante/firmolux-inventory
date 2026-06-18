@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firmolux — Inventory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #F7F3EC;
+      --white: #FFFFFF;
+      --border: #E4DDD0;
+      --border-dark: #C8BFB0;
+      --stone: #9E9082;
+      --clay: #7A5C4A;
+      --dark: #1C1714;
+      --low: #A0312D;
+      --low-bg: #FEF2F1;
+      --low-border: #F5C5C3;
+      --ok: #2D6A42;
+      --ok-bg: #F0F7F2;
+      --ok-border: #B8DEC6;
+    }
+
+    body {
+      background: var(--cream);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 400;
+      color: var(--dark);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 0 32px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+
+    .logo-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 20px;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--dark);
+    }
+
+    .logo-sub {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--stone);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .sync-time {
+      font-size: 12px;
+      color: var(--stone);
+    }
+
+    .btn-sm {
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border: 1px solid var(--border-dark);
+      background: transparent;
+      color: var(--clay);
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.15s;
+    }
+    .btn-sm:hover { background: var(--clay); color: white; border-color: var(--clay); }
+
+    /* ── Main ── */
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 24px 60px;
+    }
+
+    /* ── Summary Bar ── */
+    .summary-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .summary-tile {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .summary-tile.alert { background: var(--low-bg); border-color: var(--low-border); }
+
+    .summary-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--cream);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .summary-tile.alert .summary-icon { background: #FDE8E7; }
+
+    .summary-num {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 28px;
+      font-weight: 400;
+      line-height: 1;
+    }
+
+    .summary-tile.alert .summary-num { color: var(--low); }
+
+    .summary-label {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--stone);
+      margin-top: 2px;
+    }
+
+    /* ── Section header ── */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--stone);
+    }
+
+    /* ── Product Table ── */
+    .product-table {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+
+    .table-header {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1.2fr 1.6fr 1.6fr;
+      padding: 10px 20px;
+      background: var(--cream);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .th {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--stone);
+    }
+
+    .product-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1.2fr 1.6fr 1.6fr;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      align-items: center;
+      transition: background 0.1s;
+    }
+
+    .product-row:last-child { border-bottom: none; }
+    .product-row:hover { background: #FDFAF6; }
+    .product-row.low { background: var(--low-bg); }
+    .product-row.low:hover { background: #FDE8E7; }
+
+    .prod-name-wrap { display: flex; align-items: center; gap: 10px; }
+
+    .status-pill {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+      flex-shrink: 0;
+    }
+
+    .status-pill.low {
+      background: var(--low);
+      animation: blink 1.8s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .prod-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--dark);
+    }
+
+    .prod-code {
+      font-size: 11px;
+      color: var(--stone);
+      margin-top: 1px;
+      font-weight: 400;
+    }
+
+    .cell {
+      font-size: 14px;
+      color: var(--dark);
+    }
+
+    .cell.muted { color: var(--stone); font-size: 13px; }
+    .cell.low { color: var(--low); font-weight: 500; }
+
+    /* ── Mini gauge ── */
+    .gauge-cell { display: flex; align-items: center; gap: 8px; }
+
+    .gauge-mini {
+      flex: 1;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .gauge-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--clay);
+      transition: width 0.4s ease;
+    }
+
+    .gauge-fill.low { background: var(--low); }
+
+    .gauge-pct {
+      font-size: 11px;
+      color: var(--stone);
+      min-width: 28px;
+      text-align: right;
+    }
+
+    /* ── Inline editable inputs ── */
+    .edit-cell {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .edit-input {
+      width: 80px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--dark);
+      background: var(--cream);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .edit-input:focus { border-color: var(--clay); background: white; }
+
+    .edit-btn {
+      padding: 4px 8px;
+      border: 1px solid var(--border-dark);
+      border-radius: 4px;
+      background: transparent;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--clay);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .edit-btn:hover { background: var(--clay); color: white; border-color: var(--clay); }
+
+    .saved-badge {
+      font-size: 11px;
+      color: var(--ok);
+      opacity: 0;
+      transition: opacity 0.3s;
+      white-space: nowrap;
+    }
+
+    .saved-badge.show { opacity: 1; }
+
+    /* ── Low stock banner ── */
+    .low-banner {
+      background: var(--low-bg);
+      border: 1px solid var(--low-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--low);
+    }
+
+    .low-banner.visible { display: flex; }
+
+    /* ── Log table ── */
+    .log-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .log-head {
+      display: grid;
+      grid-template-columns: 160px 1fr 1fr;
+      padding: 10px 20px;
+      background: var(--cream);
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .log-row {
+      display: grid;
+      grid-template-columns: 160px 1fr 1fr;
+      padding: 11px 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .log-row:last-child { border-bottom: none; }
+    .log-row:hover { background: #FDFAF6; }
+
+    .log-empty {
+      padding: 24px 20px;
+      font-size: 13px;
+      color: var(--stone);
+    }
+
+    .deduction-badge {
+      display: inline-block;
+      background: var(--cream);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--dark);
+    }
+
+    .deduction-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    @media (max-width: 700px) {
+      .table-header, .product-row { grid-template-columns: 1fr 1fr; }
+      .th:nth-child(n+3), .cell:nth-child(n+3) { display: none; }
+      .summary-bar { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-name">Firmolux</span>
+    <span class="logo-sub">Inventory</span>
+  </div>
+  <div class="header-right">
+    <span class="sync-time" id="syncTime">—</span>
+    <form method="POST" action="/logout" style="display:inline">
+      <button class="btn-sm" type="submit">Sign out</button>
+    </form>
+  </div>
+</header>
+
+<main>
+
+  <div class="summary-bar">
+    <div class="summary-tile" id="tileTotal">
+      <div class="summary-icon">📦</div>
+      <div>
+        <div class="summary-num" id="sumTotal">—</div>
+        <div class="summary-label">Products tracked</div>
+      </div>
+    </div>
+    <div class="summary-tile alert" id="tileLow">
+      <div class="summary-icon">⚠️</div>
+      <div>
+        <div class="summary-num" id="sumLow">—</div>
+        <div class="summary-label">Below reorder</div>
+      </div>
+    </div>
+    <div class="summary-tile" id="tileOk">
+      <div class="summary-icon">✅</div>
+      <div>
+        <div class="summary-num" id="sumOk">—</div>
+        <div class="summary-label">Healthy stock</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="lowBanner" class="low-banner">
+    ⚠️ <span id="lowBannerText"></span>
+  </div>
+
+  <div class="section-head">
+    <div class="section-title">Products</div>
+    <div class="section-title" id="lastShipment"></div>
+  </div>
+
+  <div class="product-table">
+    <div class="table-header">
+      <div class="th">Product</div>
+      <div class="th">On Hand</div>
+      <div class="th">Buckets</div>
+      <div class="th">Adjust (kg)</div>
+      <div class="th">Set Inventory</div>
+      <div class="th">Reorder Alert</div>
+    </div>
+    <div id="productRows">
+      <div style="padding:24px 20px; color: var(--stone); font-size:13px">Loading…</div>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-top:32px">
+    <div style="display:flex; gap:20px; align-items:center;">
+      <div class="section-title" id="tabShipments" style="cursor:pointer; border-bottom:2px solid var(--dark); padding-bottom:4px;" onclick="switchTab('shipments')">Shipment log</div>
+      <div class="section-title" id="tabAudit" style="cursor:pointer; color:var(--stone); padding-bottom:4px;" onclick="switchTab('audit')">Audit trail</div>
+    </div>
+  </div>
+
+  <div id="suspectsContainer" style="display: none; background: #FFF5F0; border: 1px solid #F5C5C3; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+    <div style="font-size: 12px; font-weight: 500; letter-spacing: 0.1em; color: #A0312D; text-transform: uppercase; margin-bottom: 12px;">⚠️ Suspicious Deductions (Likely Bad Data)</div>
+    <div id="suspectsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
+  </div>
+
+  <div id="logContainer" style="display: flex; flex-direction: column; gap: 8px;">
+    <div class="log-empty">Loading…</div>
+  </div>
+
+  <div id="auditContainer" style="display: none; flex-direction: column;">
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <button id="auditFilterAll" onclick="setAuditFilter('all')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:var(--dark); color:#fff; font-size:12px; cursor:pointer;">All changes</button>
+      <button id="auditFilterManual" onclick="setAuditFilter('manual')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:#fff; color:var(--dark); font-size:12px; cursor:pointer;">Manual edits only</button>
+    </div>
+    <div id="auditList" style="display:flex; flex-direction:column; gap:0;">
+      <div class="log-empty">Loading…</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  // Display order — matches requested order
+  const PRODUCT_ORDER = ['GL','MMB','IP','MP','AP','IM','MSM','MGM','BEE','SAV'];
+
+  let allProducts = [];
+
+  async function loadProducts() {
+    const res = await fetch('/api/products');
+    allProducts = await res.json();
+
+    // Sort by defined order
+    allProducts.sort((a, b) => {
+      const ai = PRODUCT_ORDER.indexOf(a.code);
+      const bi = PRODUCT_ORDER.indexOf(b.code);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    renderProducts();
+    document.getElementById('syncTime').textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+    const low = allProducts.filter(p => p.is_low);
+    document.getElementById('sumTotal').textContent = allProducts.length;
+    document.getElementById('sumLow').textContent = low.length;
+    document.getElementById('sumOk').textContent = allProducts.length - low.length;
+
+    const banner = document.getElementById('lowBanner');
+    if (low.length > 0) {
+      banner.classList.add('visible');
+      document.getElementById('lowBannerText').textContent =
+        low.map(p => p.name).join(', ') + (low.length === 1 ? ' is' : ' are') + ' below reorder threshold';
+    } else {
+      banner.classList.remove('visible');
+    }
+  }
+
+  function renderProducts() {
+    const container = document.getElementById('productRows');
+    container.innerHTML = allProducts.map(p => {
+      const isLow = p.is_low;
+      const buckets = parseFloat(p.buckets_remaining).toFixed(1);
+      const qty = parseFloat(p.current_qty).toFixed(1);
+      const maxForGauge = Math.max(p.reorder_buckets * 4, p.buckets_remaining, 1);
+      const pct = Math.min(100, Math.round((p.buckets_remaining / maxForGauge) * 100));
+
+      return `
+        <div class="product-row ${isLow ? 'low' : ''}" data-code="${p.code}">
+          <div class="prod-name-wrap">
+            <div class="status-pill ${isLow ? 'low' : ''}"></div>
+            <div>
+              <div class="prod-name">${p.name}</div>
+              <div class="prod-code">${p.code} · ${p.bucket_size}${p.unit}/bucket</div>
+            </div>
+          </div>
+
+          <div class="cell ${isLow ? 'low' : ''}">
+            ${qty} <span style="font-size:11px;color:var(--stone)">${p.unit}</span>
+          </div>
+
+          <div class="gauge-cell">
+            <div class="gauge-mini">
+              <div class="gauge-fill ${isLow ? 'low' : ''}" style="width:${pct}%"></div>
+            </div>
+            <div class="gauge-pct">${buckets}</div>
+          </div>
+
+          <div class="edit-cell">
+            <input class="edit-input" type="number" step="any"
+              placeholder="0" id="adj-${p.code}"
+              title="Enter kg to add (positive) or subtract (negative)"
+              onblur="adjustInventory('${p.code}')"
+              onkeydown="if(event.key==='Enter') this.blur()">
+          </div>
+
+          <div class="edit-cell">
+            <input class="edit-input" type="number" min="0" step="0.5"
+              placeholder="${buckets}" id="inv-${p.code}"
+              title="Type buckets, press Enter or click away to save"
+              onblur="setInventory('${p.code}')"
+              onkeydown="if(event.key==='Enter') this.blur()">
+          </div>
+
+          <div class="edit-cell">
+            <input class="edit-input" type="number" min="0" step="1"
+              value="${p.reorder_buckets}" id="thr-${p.code}"
+              title="Type threshold, press Enter or click away to save"
+              onblur="setThreshold('${p.code}')"
+              onkeydown="if(event.key==='Enter') this.blur()">
+          </div>
+
+          <div>
+            <span class="saved-badge" id="flash-${p.code}">Saved ✓</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function setInventory(code) {
+    const input = document.getElementById(`inv-${code}`);
+    const val = input.value;
+    if (!val || isNaN(val)) return;
+    await fetch(`/api/products/${code}/set-inventory`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ buckets: parseFloat(val) })
+    });
+    input.value = '';
+    flash(code);
+    loadProducts();
+  }
+
+  async function adjustInventory(code) {
+    const input = document.getElementById(`adj-${code}`);
+    const val = input.value;
+    if (!val || isNaN(val)) return;
+    const delta = parseFloat(val);
+    if (delta === 0) return;
+    await fetch(`/api/products/${code}/adjust`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ delta_qty: delta })
+    });
+    input.value = '';
+    flash(code);
+    loadProducts();
+  }
+
+  async function setThreshold(code) {
+    const val = document.getElementById(`thr-${code}`).value;
+    if (!val || isNaN(val)) return;
+    await fetch(`/api/products/${code}/set-threshold`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reorder_buckets: parseFloat(val) })
+    });
+    flash(code);
+    loadProducts();
+  }
+
+  function flash(code) {
+    const el = document.getElementById(`flash-${code}`);
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  const PRODUCT_NAMES = {
+    'GL': 'Grassello', 'AP': 'Anchor Primer', 'MP': 'Microprimer',
+    'MSM': 'Milano Silver', 'MGM': 'Milano Gold', 'MMB': 'Berlina',
+    'IP': 'Piatto', 'IM': 'Mezzo', 'BEE': 'Beeswax', 'SAV': 'Sav'
+  };
+
+  const BUCKET_SIZES = {
+    'GL': 20, 'AP': 20, 'MP': 20, 'MSM': 20, 'MGM': 20,
+    'MMB': 25, 'IP': 25, 'IM': 25,
+    'BEE': 5, 'SAV': 2
+  };
+
+  async function loadLog() {
+    const res = await fetch('/api/log');
+    const rows = await res.json();
+    const container = document.getElementById('logContainer');
+    const suspectsContainer = document.getElementById('suspectsContainer');
+    const suspectsList = document.getElementById('suspectsList');
+    
+    if (!rows.length) {
+      container.innerHTML = '<div class="log-empty">No shipments processed yet.</div>';
+      return;
+    }
+
+    // Find suspicious deductions (product deducted > bucket size in single order)
+    const dismissed = JSON.parse(localStorage.getItem('dismissedSuspects') || '[]');
+    const suspects = [];
+    for (const r of rows) {
+      if (!Array.isArray(r.deductions)) continue;
+      for (const d of r.deductions) {
+        const bucketSize = BUCKET_SIZES[d.product] || 20;
+        if (d.qty > bucketSize * 2) {  // More than 2 buckets in one order is suspicious
+          // Create unique ID: order + product + qty (unlikely to have exact duplicates)
+          const suspectId = `${r.shipstation_order_id}-${d.product}-${d.qty}`;
+          suspects.push({
+            ...r,
+            suspectDeduction: d,
+            suspectId,
+            reason: `${PRODUCT_NAMES[d.product]} deducted ${d.qty} (> 2 buckets of ${bucketSize}kg)`
+          });
+        }
+      }
+    }
+
+    // Filter out dismissed suspects by ID
+    const activeSuspects = suspects.filter(s => !dismissed.includes(s.suspectId));
+
+    // Display suspects
+    if (activeSuspects.length > 0) {
+      suspectsContainer.style.display = 'block';
+      suspectsList.innerHTML = activeSuspects.map((s) => {
+        const time = new Date(s.processed_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const productName = PRODUCT_NAMES[s.suspectDeduction.product];
+        return `<div id="suspect-${s.suspectId}" style="background: white; border: 1px solid #F5C5C3; border-radius: 6px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div style="flex: 1;">
+            <div style="font-size: 12px; font-weight: 500; color: var(--dark);">${time} · ${productName} −${s.suspectDeduction.qty}kg (Order ${s.shipstation_order_id})</div>
+            <div style="font-size: 11px; color: var(--stone); margin-top: 2px;">${s.reason}</div>
+          </div>
+          <div style="display: flex; gap: 8px; white-space: nowrap;">
+            <button onclick="reverseSuspect('${s.suspectDeduction.product}', ${s.suspectDeduction.qty}, '${s.suspectId}')" style="padding: 6px 12px; background: #A0312D; color: white; border: none; border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer;">Reverse</button>
+            <button onclick="dismissSuspect('${s.suspectId}')" style="padding: 8px 12px; background: #DDD; color: #333; border: 1px solid #CCC; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; line-height: 1; transition: background 0.2s;" onmouseover="this.style.background='#BBB'" onmouseout="this.style.background='#DDD'">✕</button>
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      suspectsContainer.style.display = 'none';
+    }
+
+    // Group by week then by day
+    const grouped = {};
+    for (const r of rows) {
+      const date = new Date(r.processed_at);
+      const dayKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - date.getDay());
+      const weekKey = weekStart.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      
+      if (!grouped[weekKey]) grouped[weekKey] = {};
+      if (!grouped[weekKey][dayKey]) grouped[weekKey][dayKey] = [];
+      grouped[weekKey][dayKey].push(r);
+    }
+
+    let html = '';
+    for (const [weekKey, days] of Object.entries(grouped)) {
+      html += `<div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+        <div style="padding: 12px 16px; background: var(--cream); cursor: pointer; font-weight: 500; font-size: 12px; letter-spacing: 0.1em; display: flex; justify-content: space-between;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.querySelector('span').textContent = this.nextElementSibling.style.display === 'none' ? '▶' : '▼';">
+          Week of ${weekKey}
+          <span style="user-select: none;">▼</span>
+        </div>
+        <div style="border-top: 1px solid var(--border);">`;
+      
+      for (const [dayKey, dayRows] of Object.entries(days)) {
+        html += `<div>
+          <div style="padding: 10px 16px; background: #FAFAF6; cursor: pointer; font-size: 11px; letter-spacing: 0.1em; display: flex; justify-content: space-between; border-top: 1px solid var(--border);" onclick="const next = this.nextElementSibling; next.style.display = next.style.display === 'none' ? 'block' : 'none'; this.querySelector('span').textContent = next.style.display === 'none' ? '▶' : '▼';">
+            ${dayKey}
+            <span style="user-select: none;">▼</span>
+          </div>
+          <div style="background: white;">`;
+        
+        for (const r of dayRows) {
+          let deductionsHtml = '';
+          const logEntry = typeof r.deductions === 'string' ? JSON.parse(r.deductions) : r.deductions;
+          const deductionsArray = Array.isArray(logEntry) ? logEntry : (logEntry?.deductions || []);
+          const failedSkus = logEntry?.failedSkus;
+          
+          if (deductionsArray.length > 0) {
+            deductionsHtml = '<div class="deduction-wrap">' + 
+              deductionsArray.map(d => {
+                const name = PRODUCT_NAMES[d.product] || d.product;
+                return `<div class="deduction-badge">${name} <strong>−${d.qty}</strong></div>`;
+              }).join('') + 
+              '</div>';
+          } else if (failedSkus) {
+            deductionsHtml = `<div style="background: #FFF0F0; border: 1px solid #F5C5C3; border-radius: 4px; padding: 6px 10px; display: inline-block;">
+              <div style="color: #A0312D; font-size: 11px; font-weight: 500;">Unparseable SKUs:</div>
+              <div style="color: #8B3A3A; font-size: 11px; margin-top: 2px; font-family: monospace;">${failedSkus}</div>
+            </div>`;
+          } else {
+            deductionsHtml = '<div style="color: var(--stone); font-size: 12px;">No items or all unparseable</div>';
+          }
+          const time = new Date(r.processed_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+          html += `<div style="border-top: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: 80px 120px 1fr; gap: 12px; align-items: start;">
+            <div style="color:var(--stone);font-size:12px">${time}</div>
+            <div style="color:var(--stone);font-size:11px">${r.shipstation_order_id || '—'}</div>
+            <div>${deductionsHtml}</div>
+          </div>`;
+        }
+        
+        html += `</div></div>`;
+      }
+      
+      html += `</div></div>`;
+    }
+    
+    container.innerHTML = html;
+  }
+
+  function dismissSuspect(suspectId) {
+    const el = document.getElementById(`suspect-${suspectId}`);
+    if (el) el.style.display = 'none';
+    // Remember this dismiss in localStorage by unique ID
+    const dismissed = JSON.parse(localStorage.getItem('dismissedSuspects') || '[]');
+    if (!dismissed.includes(suspectId)) dismissed.push(suspectId);
+    localStorage.setItem('dismissedSuspects', JSON.stringify(dismissed));
+  }
+
+  async function reverseSuspect(productCode, deductedQty, suspectId) {
+    if (!confirm(`Reverse ${PRODUCT_NAMES[productCode]} −${deductedQty}kg deduction?`)) return;
+    // Add back the full amount
+    await fetch(`/api/products/${productCode}/adjust`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ delta_qty: deductedQty })
+    });
+    dismissSuspect(suspectId);
+    loadProducts();
+    loadLog();
+  }
+
+  // ─── Audit trail ──────────────────────────────────────────────────────────
+  let currentTab = 'shipments';
+  let auditFilter = 'all';
+
+  function switchTab(tab) {
+    currentTab = tab;
+    const shipTab = document.getElementById('tabShipments');
+    const audTab = document.getElementById('tabAudit');
+    const logC = document.getElementById('logContainer');
+    const audC = document.getElementById('auditContainer');
+    const suspects = document.getElementById('suspectsContainer');
+
+    if (tab === 'shipments') {
+      shipTab.style.borderBottom = '2px solid var(--dark)';
+      shipTab.style.color = 'var(--dark)';
+      audTab.style.borderBottom = 'none';
+      audTab.style.color = 'var(--stone)';
+      logC.style.display = 'flex';
+      audC.style.display = 'none';
+      // suspects visibility is managed by loadLog
+      loadLog();
+    } else {
+      audTab.style.borderBottom = '2px solid var(--dark)';
+      audTab.style.color = 'var(--dark)';
+      shipTab.style.borderBottom = 'none';
+      shipTab.style.color = 'var(--stone)';
+      logC.style.display = 'none';
+      audC.style.display = 'flex';
+      if (suspects) suspects.style.display = 'none';
+      loadAudit();
+    }
+  }
+
+  function setAuditFilter(filter) {
+    auditFilter = filter;
+    const allBtn = document.getElementById('auditFilterAll');
+    const manBtn = document.getElementById('auditFilterManual');
+    if (filter === 'all') {
+      allBtn.style.background = 'var(--dark)'; allBtn.style.color = '#fff';
+      manBtn.style.background = '#fff'; manBtn.style.color = 'var(--dark)';
+    } else {
+      manBtn.style.background = 'var(--dark)'; manBtn.style.color = '#fff';
+      allBtn.style.background = '#fff'; allBtn.style.color = 'var(--dark)';
+    }
+    loadAudit();
+  }
+
+  const CHANGE_LABELS = {
+    shipment: { label: 'Shipment', color: '#8A6D3B', bg: '#FBF6EC' },
+    manual_adjust: { label: 'Manual adjust', color: '#1F6F54', bg: '#EDF7F2' },
+    manual_set: { label: 'Manual set', color: '#2C5C8A', bg: '#EDF3FA' }
+  };
+
+  async function loadAudit() {
+    const container = document.getElementById('auditList');
+    const url = auditFilter === 'manual' ? '/api/audit?type=manual' : '/api/audit';
+    let rows;
+    try {
+      const res = await fetch(url);
+      rows = await res.json();
+    } catch (e) {
+      container.innerHTML = '<div class="log-empty">Could not load audit trail.</div>';
+      return;
+    }
+
+    if (!rows.length) {
+      container.innerHTML = '<div class="log-empty">No changes recorded yet.</div>';
+      return;
+    }
+
+    // Header row
+    let html = `<div style="display:grid; grid-template-columns: 150px 130px 1fr 90px 90px 90px; gap:12px; padding:10px 16px; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--stone); border-bottom:1px solid var(--border);">
+      <div>When</div><div>Type</div><div>Product / Source</div><div style="text-align:right;">Change</div><div style="text-align:right;">Before</div><div style="text-align:right;">After</div>
+    </div>`;
+
+    for (const r of rows) {
+      const when = new Date(r.created_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+      const meta = CHANGE_LABELS[r.change_type] || { label: r.change_type, color: '#555', bg: '#F0F0F0' };
+      const delta = parseFloat(r.delta_qty);
+      const deltaStr = isNaN(delta) ? '—' : `${delta > 0 ? '+' : ''}${delta % 1 === 0 ? delta : delta.toFixed(1)}`;
+      const deltaColor = delta > 0 ? '#1F6F54' : (delta < 0 ? '#A0312D' : 'var(--stone)');
+      const before = parseFloat(r.qty_before);
+      const after = parseFloat(r.qty_after);
+      const productName = r.product_name || r.product_code;
+      const source = r.source ? `<span style="color:var(--stone); font-size:11px;"> · ${r.source}</span>` : '';
+      const note = r.note ? `<div style="color:var(--stone); font-size:11px; margin-top:2px;">${r.note}</div>` : '';
+
+      html += `<div style="display:grid; grid-template-columns: 150px 130px 1fr 90px 90px 90px; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); align-items:start; font-size:13px;">
+        <div style="color:var(--stone);">${when}</div>
+        <div><span style="display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:500; color:${meta.color}; background:${meta.bg};">${meta.label}</span></div>
+        <div><strong>${productName}</strong>${source}${note}</div>
+        <div style="text-align:right; font-weight:600; color:${deltaColor};">${deltaStr}</div>
+        <div style="text-align:right; color:var(--stone);">${isNaN(before) ? '—' : (before % 1 === 0 ? before : before.toFixed(1))}</div>
+        <div style="text-align:right;">${isNaN(after) ? '—' : (after % 1 === 0 ? after : after.toFixed(1))}</div>
+      </div>`;
+    }
+
+    container.innerHTML = html;
+  }
+
+  loadProducts();
+  loadLog();
+  setInterval(() => {
+    loadProducts();
+    if (currentTab === 'shipments') loadLog();
+    else loadAudit();
+  }, 60000);
+</script>
+</body>
+</html>
