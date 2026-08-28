@@ -86,12 +86,13 @@ function postSlack(webhookUrl, message) {
   });
 }
 
-async function sendSkuParseFailureAlert(webhookUrl, { orderNumber, unparseableSkus }) {
+async function sendSkuParseFailureAlert(webhookUrl, { orderNumber, brand, unparseableSkus }) {
   if (!webhookUrl) return;
   const orderLabel = orderNumber || '(unknown)';
+  const brandLabel = brand || '(unknown)';
   const skuList = (unparseableSkus || []).map(s => `\`${s}\``).join(', ') || '(none)';
   const message = {
-    text: `⚠️ Unparseable SKU on order ${orderLabel}`,
+    text: `⚠️ Unparseable SKU on order ${orderLabel} (${brandLabel})`,
     blocks: [
       {
         type: 'header',
@@ -101,6 +102,7 @@ async function sendSkuParseFailureAlert(webhookUrl, { orderNumber, unparseableSk
         type: 'section',
         fields: [
           { type: 'mrkdwn', text: `*Order:*\n${orderLabel}` },
+          { type: 'mrkdwn', text: `*Brand:*\n${brandLabel}` },
           { type: 'mrkdwn', text: `*Unparseable SKU(s):*\n${skuList}` },
           { type: 'mrkdwn', text: `*Impact:*\nDeductions for these SKUs were skipped. Adjust inventory manually if needed.` }
         ]
@@ -133,4 +135,39 @@ async function sendEmptyShipmentAlert(webhookUrl, { orderNumber }) {
   return postSlack(webhookUrl, message);
 }
 
-module.exports = { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert };
+async function sendShipmentFetchFailureAlert(webhookUrl, { brand, reason, payloadSummary }) {
+  if (!webhookUrl) return;
+  const brandLabel = brand || '(unknown)';
+  const reasonLabel = reason || '(unknown)';
+  const summary = payloadSummary || '(none)';
+  const message = {
+    text: `🚫 Shipment fetch failed — ${brandLabel} — ${reasonLabel}`,
+    blocks: [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: `🚫 Shipment fetch failed: ${brandLabel}` }
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Brand:*\n${brandLabel}` },
+          { type: 'mrkdwn', text: `*Reason:*\n${reasonLabel}` },
+          { type: 'mrkdwn', text: `*Impact:*\nNo deductions were made. The handler still returned 200 so ShipStation won't retry — the shipment is lost unless recovered manually.` },
+          { type: 'mrkdwn', text: `*Action:*\nCheck ShipStation credentials for this brand and inspect the raw payload to identify the shipment.` }
+        ]
+      },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*Payload preview:*\n\`\`\`${summary}\`\`\`` }
+      }
+    ]
+  };
+  return postSlack(webhookUrl, message);
+}
+
+module.exports = {
+  sendSlackAlert,
+  sendSkuParseFailureAlert,
+  sendEmptyShipmentAlert,
+  sendShipmentFetchFailureAlert,
+};

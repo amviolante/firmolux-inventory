@@ -5,7 +5,7 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const path = require('path');
 const { parseSKU } = require('./sku-parser');
-const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert } = require('./slack');
+const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert } = require('./slack');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +23,10 @@ app.use(express.static(path.join(__dirname, '../public')));
 // ─── Auto-setup DB on boot ────────────────────────────────────────────────────
 async function initDB() {
   const client = await pool.connect();
+  // Sentinel: distinguishes the brand-column migration failure inside the
+  // outer catch. Migration errors rethrow to prevent boot into a half-migrated
+  // schema; other errors keep the pre-existing log-and-continue behavior.
+  let brandMigrationFailure = null;
   try {
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
@@ -66,6 +70,22 @@ async function initDB() {
       );
     `);
 
+    // Brand column: existing rows default to 'Firmolux' since that's all we had
+    // before per-brand webhook endpoints. New rows set brand from the fired route.
+    // MUST succeed. A half-migrated schema causes recordAudit and shipment_log
+    // INSERTs to fail per-request, committing deductions with no record — the
+    // exact failure this system exists to prevent. Rethrown to trigger the
+    // process.exit path at the initDB caller.
+    try {
+      await client.query(`
+        ALTER TABLE shipment_log    ADD COLUMN IF NOT EXISTS brand VARCHAR(20) DEFAULT 'Firmolux';
+        ALTER TABLE inventory_audit ADD COLUMN IF NOT EXISTS brand VARCHAR(20) DEFAULT 'Firmolux';
+      `);
+    } catch (err) {
+      brandMigrationFailure = err;
+      throw err;
+    }
+
     await client.query(`
       INSERT INTO products (code, name, unit, bucket_size, reorder_buckets) VALUES
         ('GL',  'Grassello',      'kg', 20, 5),
@@ -96,6 +116,10 @@ async function initDB() {
     console.log('✅ Database ready');
   } catch (err) {
     console.error('DB init error:', err.message);
+    if (brandMigrationFailure) {
+      console.error('❌ Brand column migration failed — refusing to boot.');
+      throw brandMigrationFailure;
+    }
   } finally {
     client.release();
   }
@@ -236,15 +260,37 @@ app.get('/api/audit', requireAuth, async (req, res) => {
 });
 
 // ─── WEBHOOK: ShipStation ─────────────────────────────────────────────────────
-app.post('/webhook/shipstation', async (req, res) => {
+async function handleShipmentWebhook(req, res, brand, credentials) {
   try {
     // Auth check removed — URL privacy is sufficient
 
     const payload = req.body;
-    console.log('ShipStation webhook received:', JSON.stringify(payload).slice(0, 300));
+    console.log(`[${brand}] ShipStation webhook received:`, JSON.stringify(payload).slice(0, 300));
 
-    const orderData = await fetchShipStationOrder(payload);
-    if (!orderData) return res.status(200).json({ message: 'No order data to process' });
+    const orderData = await fetchShipStationOrder(payload, credentials);
+    if (!orderData) {
+      // Missing creds OR ShipStation returned nothing → silent under-deduction
+      // if we just return. Fire an alert but still 200 so ShipStation doesn't
+      // retry-storm on a broken endpoint. Same try/catch discipline as the
+      // other alerts — Slack failure MUST NOT propagate.
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+      if (webhookUrl) {
+        const reason = (!credentials || !credentials.apiKey || !credentials.apiSecret)
+          ? 'ShipStation credentials missing for this route'
+          : 'Could not resolve shipment data (missing resource_url or empty ShipStation response)';
+        console.log(`🚫 [${brand}] Shipment fetch failure: ${reason}`);
+        try {
+          await sendShipmentFetchFailureAlert(webhookUrl, {
+            brand,
+            reason,
+            payloadSummary: JSON.stringify(payload).slice(0, 500),
+          });
+        } catch (err) {
+          console.error(`Slack fetch-failure alert failed for ${brand}:`, err.message);
+        }
+      }
+      return res.status(200).json({ message: 'No order data to process' });
+    }
 
     const orderTag = orderData.orderNumber
       ? `Order #${orderData.orderNumber}`
@@ -296,7 +342,8 @@ app.post('/webhook/shipstation', async (req, res) => {
           await deductInventory(pool, comp.product_code, deductQty, {
             changeType: 'shipment',
             source: orderTag,
-            note: `${kitName} x${orderQty}`
+            note: `${kitName} x${orderQty}`,
+            brand
           });
           deductions.push({ product: comp.product_code, qty: deductQty, reason: `${kitName} x${orderQty}` });
           await checkAndAlert(pool, comp.product_code);
@@ -316,7 +363,8 @@ app.post('/webhook/shipstation', async (req, res) => {
       await deductInventory(pool, parsed.productCode, totalDeduct, {
         changeType: 'shipment',
         source: orderTag,
-        note: `${sku} x${orderQty}`
+        note: `${sku} x${orderQty}`,
+        brand
       });
       deductions.push({ product: parsed.productCode, qty: totalDeduct, sku, orderQty });
       await checkAndAlert(pool, parsed.productCode);
@@ -343,6 +391,7 @@ app.post('/webhook/shipstation', async (req, res) => {
         try {
           await sendSkuParseFailureAlert(webhookUrl, {
             orderNumber: orderLabel,
+            brand,
             unparseableSkus: failedSkuList
           });
         } catch (err) {
@@ -361,24 +410,38 @@ app.post('/webhook/shipstation', async (req, res) => {
     const fullIdentifier = displayId + displayName;
     
     await pool.query(
-      'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions) VALUES ($1, $2, $3, $4)',
-      [fullIdentifier, 'BATCH', 1, JSON.stringify(logData)]
+      'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions, brand) VALUES ($1, $2, $3, $4, $5)',
+      [fullIdentifier, 'BATCH', 1, JSON.stringify(logData), brand]
     );
     console.log('✅ Saved to log');
 
     res.json({ success: true, deductions });
 
   } catch (err) {
-    console.error('Webhook error:', err);
+    console.error(`[${brand}] Webhook error:`, err);
     res.status(500).json({ error: 'Internal error' });
   }
+}
+
+// ─── WEBHOOK routes ───────────────────────────────────────────────────────────
+// Existing /webhook/shipstation is kept as a Firmolux alias so the currently
+// configured ShipStation webhook keeps working through the deploy. Removing it
+// is a separate step after ShipStation is repointed to /firmolux.
+const firmoluxCredentials = () => ({
+  apiKey: process.env.SHIPSTATION_API_KEY,
+  apiSecret: process.env.SHIPSTATION_API_SECRET,
+});
+const violanteCredentials = () => ({
+  apiKey: process.env.VIOLANTE_SHIPSTATION_API_KEY,
+  apiSecret: process.env.VIOLANTE_SHIPSTATION_API_SECRET,
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-async function fetchShipStationOrder(payload) {
-  const apiKey = process.env.SHIPSTATION_API_KEY;
-  const apiSecret = process.env.SHIPSTATION_API_SECRET;
+app.post('/webhook/shipstation',          (req, res) => handleShipmentWebhook(req, res, 'Firmolux', firmoluxCredentials()));
+app.post('/webhook/shipstation/firmolux', (req, res) => handleShipmentWebhook(req, res, 'Firmolux', firmoluxCredentials()));
+app.post('/webhook/shipstation/violante', (req, res) => handleShipmentWebhook(req, res, 'VIOLANTE', violanteCredentials()));
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function fetchShipStationOrder(payload, { apiKey, apiSecret } = {}) {
   console.log('fetchShipStationOrder called, have credentials:', !!(apiKey && apiSecret));
 
   if (!apiKey || !apiSecret) {
@@ -457,16 +520,20 @@ async function deductInventory(pool, productCode, qty, opts = {}) {
     qtyBefore: before,
     qtyAfter: after,
     source: opts.source || null,
-    note: opts.note || null
+    note: opts.note || null,
+    brand: opts.brand || null
   });
 }
 
-async function recordAudit(pool, { productCode, changeType, deltaQty, qtyBefore, qtyAfter, source, note }) {
+async function recordAudit(pool, { productCode, changeType, deltaQty, qtyBefore, qtyAfter, source, note, brand }) {
+  // Dashboard-driven manual routes don't pass brand and default to Firmolux —
+  // the dashboard is Firmolux-scoped today. Webhook routes pass brand explicitly.
+  const brandVal = brand || 'Firmolux';
   try {
     await pool.query(
-      `INSERT INTO inventory_audit (product_code, change_type, delta_qty, qty_before, qty_after, source, note)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [productCode, changeType, deltaQty, qtyBefore, qtyAfter, source, note]
+      `INSERT INTO inventory_audit (product_code, change_type, delta_qty, qty_before, qty_after, source, note, brand)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [productCode, changeType, deltaQty, qtyBefore, qtyAfter, source, note, brandVal]
     );
   } catch (err) {
     console.error('Failed to record audit entry:', err.message);
