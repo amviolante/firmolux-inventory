@@ -484,7 +484,14 @@ async function checkAndAlert(pool, productCode) {
     const webhookUrl = process.env.SLACK_WEBHOOK_URL;
     if (webhookUrl) {
       console.log(`🔔 Checking alert for ${productCode}: ${bucketsRemaining.toFixed(1)} buckets < ${product.reorder_buckets} threshold`);
-      await sendSlackAlert(webhookUrl, product, currentQty, bucketsRemaining, product.reorder_buckets);
+      // Slack failures MUST NOT propagate — checkAndAlert is awaited per-item
+      // inside the ShipStation webhook handler; an error here would return
+      // non-200 and cause ShipStation to retry an already-deducted order.
+      try {
+        await sendSlackAlert(webhookUrl, product, currentQty, bucketsRemaining, product.reorder_buckets);
+      } catch (err) {
+        console.error(`Slack low-inventory alert failed for ${productCode}:`, err.message);
+      }
     }
   }
 }

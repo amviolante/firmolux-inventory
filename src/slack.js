@@ -46,6 +46,12 @@ async function sendSlackAlert(webhookUrl, product, currentQty, bucketsRemaining,
     });
 
     req.on('error', reject);
+    // 5s hard cap — same rationale as postSlack. checkAndAlert is awaited
+    // per-item inside the ShipStation webhook handler, so a hung socket here
+    // would stall past ShipStation's timeout → retry → double-deduct.
+    req.setTimeout(5000, () => {
+      req.destroy(new Error('Slack request timed out after 5000ms'));
+    });
     req.write(body);
     req.end();
   });
