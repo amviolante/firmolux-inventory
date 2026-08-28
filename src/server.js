@@ -5,7 +5,7 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const path = require('path');
 const { parseSKU } = require('./sku-parser');
-const { sendSlackAlert } = require('./slack');
+const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert } = require('./slack');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -249,12 +249,28 @@ app.post('/webhook/shipstation', async (req, res) => {
     const orderTag = orderData.orderNumber
       ? `Order #${orderData.orderNumber}`
       : (orderData.orderId ? `Order #${orderData.orderId}` : 'Order (unknown)');
+    const orderLabel = orderData.orderNumber || orderData.orderId || null;
 
     const deductions = [];
     let processedCount = 0;
 
     console.log('Processing items from order:', orderData.orderId);
     console.log('Items count:', (orderData.items || []).length);
+
+    // Fetched shipment with zero items → human review, not an error.
+    // Slack failures MUST NOT propagate — the outer catch returns non-200 and
+    // ShipStation would retry, double-deducting anything already processed.
+    if ((orderData.items || []).length === 0) {
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+      if (webhookUrl) {
+        console.log(`🔎 Empty shipment alert for ${orderTag}`);
+        try {
+          await sendEmptyShipmentAlert(webhookUrl, { orderNumber: orderLabel });
+        } catch (err) {
+          console.error(`Slack empty-shipment alert failed for ${orderTag}:`, err.message);
+        }
+      }
+    }
 
     for (const item of orderData.items || []) {
       const sku = item.sku;
@@ -310,13 +326,30 @@ app.post('/webhook/shipstation', async (req, res) => {
     console.log(`Processed ${processedCount} items, ${deductions.length} deductions recorded`);
 
     // Capture any SKUs that failed to parse (for visibility in the log)
-    const failedSkus = (orderData.items || [])
+    const failedSkuList = (orderData.items || [])
       .filter(item => item.sku && item.sku.split('-')[0].toUpperCase() !== 'KRH'
                       && item.sku.split('-')[0].toUpperCase() !== 'KIT-T'
                       && item.sku.split('-')[0].toUpperCase() !== 'KIT-U'
                       && !parseSKU(item.sku))
-      .map(item => item.sku)
-      .join(' | ');
+      .map(item => item.sku);
+    const failedSkus = failedSkuList.join(' | ');
+
+    // Any parse failure → Slack alert with order + raw SKU strings.
+    // Slack failures MUST NOT propagate — see empty-shipment alert above.
+    if (failedSkuList.length > 0) {
+      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+      if (webhookUrl) {
+        console.log(`⚠️ Unparseable SKU alert for ${orderTag}: ${failedSkus}`);
+        try {
+          await sendSkuParseFailureAlert(webhookUrl, {
+            orderNumber: orderLabel,
+            unparseableSkus: failedSkuList
+          });
+        } catch (err) {
+          console.error(`Slack parse-failure alert failed for ${orderTag}:`, err.message);
+        }
+      }
+    }
 
     const logData = {
       deductions,
