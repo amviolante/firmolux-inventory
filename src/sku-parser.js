@@ -12,11 +12,23 @@ const PRODUCT_INFO = {
   'MMB': { name: 'Berlina', quantities: [1, 5, 10, 15, 25, 99] },
   'IP': { name: 'Piatto', quantities: [1, 5, 10, 15, 25, 99] },
   'IM': { name: 'Mezzo', quantities: [1, 5, 10, 15, 25, 99] },
-  'BEE': { name: 'Beeswax', quantities: [1, 2, 5, 99] },
-  'SAV': { name: 'Sav', quantities: [2], fixed: true },
+  'BEE': { name: 'Beeswax', quantities: [0.5, 1, 2, 5, 99] },
+  'SAV': { name: 'Sav', quantities: [1, 2] },
   'KRH': { name: 'Kit', quantities: [1], fixed: true },
   'KIT-T': { name: 'Kit-T', quantities: [1], fixed: true },
   'KIT-U': { name: 'Kit-U', quantities: [1], fixed: true },
+};
+
+// Aliases collapse to canonical codes. MG → MGM is Milano Gold shortened.
+const CODE_ALIASES = {
+  'MG': 'MGM',
+};
+
+// Typo SKUs in Shopify that can't be edited. Keyed on the SKU after the tint
+// suffix and any trailing KG are stripped. MMB20 is a typo — 20 is not
+// otherwise a valid Berlina quantity, and it should route to Berlina 25kg.
+const SKU_OVERRIDES = {
+  'MMB20': { productCode: 'MMB', qty: 25 },
 };
 
 // Name → code (for Amazon format)
@@ -47,31 +59,47 @@ function parseSKU(rawSku) {
   const sku = rawSku.trim();
   console.log(`[SKU] Parsing: "${sku}"`);
 
-  // Try code format first: "GL04", "MMB25KG", etc.
+  // Blanket discard of everything after the first hyphen — deliberately not a
+  // whitelist of known color/tint prefixes, since new paint systems appear.
   const upperSku = sku.split('-')[0].toUpperCase();
-  const prefixes = Object.keys(PRODUCT_INFO).sort((a, b) => b.length - a.length);
+
+  // Overrides run before normal parsing. Key = pre-hyphen SKU with any
+  // trailing KG stripped, so MMB20 / MMB20KG / MMB20-SW7008 all collapse.
+  const overrideKey = upperSku.replace(/KG$/, '');
+  if (SKU_OVERRIDES[overrideKey]) {
+    const hit = SKU_OVERRIDES[overrideKey];
+    console.log(`[SKU] ✓ (Override) ${overrideKey} → ${hit.productCode} qty=${hit.qty}`);
+    return { productCode: hit.productCode, qty: hit.qty };
+  }
+
+  // Try code format first: "GL04", "MMB25KG", etc.
+  // Longest first, or MG shadows MGM.
+  const prefixes = [...Object.keys(PRODUCT_INFO), ...Object.keys(CODE_ALIASES)]
+    .sort((a, b) => b.length - a.length);
 
   for (const prefix of prefixes) {
     if (!upperSku.startsWith(prefix)) continue;
 
-    const info = PRODUCT_INFO[prefix];
+    const productCode = CODE_ALIASES[prefix] || prefix;
+    const info = PRODUCT_INFO[productCode];
 
     // Fixed-quantity products
     if (info.fixed) {
       console.log(`[SKU] ✓ (Code) ${info.name} (fixed qty: ${info.quantities[0]})`);
-      return { productCode: prefix, qty: info.quantities[0] };
+      return { productCode, qty: info.quantities[0] };
     }
 
-    // Extract number
+    // Widened: accepts a leading decimal point (BEE.5 → 0.5) and unpadded
+    // single digits (SAV1 → 1, MG8KG → 8). parseFloat handles ".5" natively.
     const rest = upperSku.slice(prefix.length);
-    const match = rest.match(/^(\d+)/);
+    const match = rest.match(/^(\d*\.?\d+)/);
 
     if (!match) continue;
 
-    let qty = parseInt(match[1], 10);
+    let qty = parseFloat(match[1]);
 
     if (!info.quantities.includes(qty)) {
-      console.log(`[SKU] ✗ (Code) ${prefix} qty=${qty} not in valid set: ${info.quantities.join(',')}`);
+      console.log(`[SKU] ✗ (Code) ${productCode} qty=${qty} not in valid set: ${info.quantities.join(',')}`);
       continue;
     }
 
@@ -82,7 +110,7 @@ function parseSKU(rawSku) {
       console.log(`[SKU] ✓ (Code) ${info.name} qty=${qty}kg`);
     }
 
-    return { productCode: prefix, qty };
+    return { productCode, qty };
   }
 
   // Try Amazon format: "Microprimer4kg", "Grassello20kg", etc.
@@ -114,10 +142,56 @@ function parseSKU(rawSku) {
     return { productCode, qty };
   }
 
-
-
   console.log(`[SKU] ✗ No format matched for: ${sku}`);
   return null;
 }
 
 module.exports = { parseSKU, PRODUCT_INFO };
+
+// Inline tests — run with `node src/sku-parser.js`.
+if (require.main === module) {
+  const cases = [
+    // Overrides: MMB20 typo → Berlina 25, across tint suffix and KG variants.
+    { input: 'MMB20', expect: { productCode: 'MMB', qty: 25 } },
+    { input: 'MMB20KG', expect: { productCode: 'MMB', qty: 25 } },
+    { input: 'MMB20-SW7008', expect: { productCode: 'MMB', qty: 25 } },
+    // MG alias + widened quantity regex. MGM must still win over MG.
+    { input: 'MGM20', expect: { productCode: 'MGM', qty: 20 } },
+    { input: 'MGM08', expect: { productCode: 'MGM', qty: 8 } },
+    { input: 'MG8KG', expect: { productCode: 'MGM', qty: 8 } },
+    // Beeswax: 0.5 added, leading-dot regex.
+    { input: 'BEE1', expect: { productCode: 'BEE', qty: 1 } },
+    { input: 'BEE5', expect: { productCode: 'BEE', qty: 5 } },
+    { input: 'BEE.5', expect: { productCode: 'BEE', qty: 0.5 } },
+    // Sav: 1 added, no longer fixed.
+    { input: 'SAV1', expect: { productCode: 'SAV', qty: 1 } },
+    { input: 'SAV2', expect: { productCode: 'SAV', qty: 2 } },
+    // Existing 99 → 1 preserved.
+    { input: 'GL99', expect: { productCode: 'GL', qty: 1 } },
+    { input: 'IP99', expect: { productCode: 'IP', qty: 1 } },
+    // Regression guards: unchanged from today.
+    { input: 'GL04', expect: { productCode: 'GL', qty: 4 } },
+    { input: 'MP04KG', expect: { productCode: 'MP', qty: 4 } },
+    { input: 'MMB25KG-BM123', expect: { productCode: 'MMB', qty: 25 } },
+  ];
+
+  const origLog = console.log;
+  console.log = () => {};
+  const results = cases.map(c => {
+    const got = parseSKU(c.input);
+    const ok = got && got.productCode === c.expect.productCode && got.qty === c.expect.qty;
+    return { ...c, got, ok };
+  });
+  console.log = origLog;
+
+  const failed = results.filter(r => !r.ok);
+  for (const r of failed) {
+    console.error(`FAIL ${r.input}: expected ${JSON.stringify(r.expect)}, got ${JSON.stringify(r.got)}`);
+  }
+  if (failed.length) {
+    console.error(`${failed.length} of ${cases.length} tests failed`);
+    process.exit(1);
+  } else {
+    console.log(`All ${cases.length} tests passed`);
+  }
+}
