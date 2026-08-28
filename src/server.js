@@ -352,10 +352,10 @@ async function handleShipmentWebhook(req, res, brand, credentials) {
         continue;
       }
 
-      const parsed = parseSKU(sku);
-      if (!parsed) { 
+      const parsed = parseSKU(sku, brand);
+      if (!parsed) {
         console.log(`  ❌ Could not parse SKU`);
-        continue; 
+        continue;
       }
 
       const totalDeduct = parsed.qty * orderQty;
@@ -378,7 +378,7 @@ async function handleShipmentWebhook(req, res, brand, credentials) {
       .filter(item => item.sku && item.sku.split('-')[0].toUpperCase() !== 'KRH'
                       && item.sku.split('-')[0].toUpperCase() !== 'KIT-T'
                       && item.sku.split('-')[0].toUpperCase() !== 'KIT-U'
-                      && !parseSKU(item.sku))
+                      && !parseSKU(item.sku, brand))
       .map(item => item.sku);
     const failedSkus = failedSkuList.join(' | ');
 

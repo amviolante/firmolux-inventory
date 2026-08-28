@@ -1,6 +1,16 @@
-// SKU parser handling both formats:
-// 1. Code format: GL04, MP04KG, MMB25KG-BM123, IP99
-// 2. Amazon format: Grassello4kg, Microprimer4kg, Berlina25kg, Piatto1kg
+// SKU parser, brand-scoped.
+//
+// Firmolux vocabulary handles two formats:
+//   1. Code format:   GL04, MP04KG, MMB25KG-BM123, IP99
+//   2. Amazon format: Grassello4kg, Microprimer4kg, Berlina25kg, Piatto1kg
+//
+// VIOLANTE vocabulary handles one format:
+//   Code + tint suffix: VO01-SW7068, GL01-BMOC45, PS08-Natural, VO01 (bare).
+//   Shopify and Amazon channels both send this same shape; the blanket
+//   hyphen-strip covers both. Numeral is always kilograms.
+//
+// The webhook route establishes brand before calling parseSKU, so this file
+// dispatches on the brand argument rather than merging vocabularies.
 
 const PRODUCT_INFO = {
   // Code → { name, quantities }
@@ -31,7 +41,8 @@ const SKU_OVERRIDES = {
   'MMB20': { productCode: 'MMB', qty: 25 },
 };
 
-// Name → code (for Amazon format)
+// Name → code (Firmolux Amazon format only — VIOLANTE ships code+suffix on
+// both channels, so it never touches this table).
 const NAME_TO_CODE = {
   'grassello': 'GL',
   'anchor primer': 'AP',
@@ -50,15 +61,32 @@ const NAME_TO_CODE = {
   'kit-u': 'KIT-U',
 };
 
-function parseSKU(rawSku) {
+// VIOLANTE prefix → { canonical Firmolux product code, valid quantities in kg }.
+// Only genuinely VIOLANTE-specific prefixes live here. Shared codes (GL, BEE,
+// SAV) are deliberately absent — they resolve via fallthrough to PRODUCT_INFO
+// so BEE2, SAV1, GL04, etc. cannot diverge between brands.
+const VIOLANTE_PRODUCT_INFO = {
+  'PS': { name: 'Microprimer', quantities: [1, 4, 8, 12, 20],  canonicalCode: 'MP'  },
+  'LT': { name: 'Piatto',      quantities: [1, 5, 10, 15, 25], canonicalCode: 'IP'  },
+  'VO': { name: 'Berlina',     quantities: [1, 5, 10, 15, 25], canonicalCode: 'MMB' },
+};
+
+function parseSKU(rawSku, brand = 'Firmolux') {
   if (!rawSku || typeof rawSku !== 'string') {
     console.log(`[SKU] Invalid input: ${rawSku}`);
     return null;
   }
 
   const sku = rawSku.trim();
-  console.log(`[SKU] Parsing: "${sku}"`);
+  console.log(`[SKU:${brand}] Parsing: "${sku}"`);
 
+  if (brand === 'VIOLANTE') return parseViolanteSKU(sku);
+  // Unknown brands fall through to Firmolux — safer than parseError on a
+  // misrouted request.
+  return parseFirmoluxSKU(sku);
+}
+
+function parseFirmoluxSKU(sku) {
   // Blanket discard of everything after the first hyphen — deliberately not a
   // whitelist of known color/tint prefixes, since new paint systems appear.
   const upperSku = sku.split('-')[0].toUpperCase();
@@ -146,6 +174,42 @@ function parseSKU(rawSku) {
   return null;
 }
 
+function parseViolanteSKU(sku) {
+  // Blanket discard of everything after the first hyphen — same rule as
+  // Firmolux, deliberately not a whitelist of known tint prefixes.
+  const upperSku = sku.split('-')[0].toUpperCase();
+
+  // VIOLANTE-specific prefixes (PS/LT/VO) only. Shared codes (GL/BEE/SAV)
+  // fall through to Firmolux below.
+  const prefixes = Object.keys(VIOLANTE_PRODUCT_INFO).sort((a, b) => b.length - a.length);
+
+  for (const prefix of prefixes) {
+    if (!upperSku.startsWith(prefix)) continue;
+
+    const info = VIOLANTE_PRODUCT_INFO[prefix];
+    const rest = upperSku.slice(prefix.length);
+    const match = rest.match(/^(\d*\.?\d+)/);
+    if (!match) continue;
+
+    const qty = parseFloat(match[1]);
+    if (!info.quantities.includes(qty)) {
+      console.log(`[SKU:VIOLANTE] ✗ ${prefix} qty=${qty} not in valid set: ${info.quantities.join(',')}`);
+      continue;
+    }
+
+    // Deliberately no 99 → 1 shorthand. 99 is a Firmolux legacy placeholder
+    // and doesn't apply to VIOLANTE-native codes. Shared codes falling through
+    // to Firmolux inherit whatever Firmolux does with 99, which is correct.
+    console.log(`[SKU:VIOLANTE] ✓ ${info.name} (${prefix}→${info.canonicalCode}) qty=${qty}kg`);
+    return { productCode: info.canonicalCode, qty };
+  }
+
+  // Fall through to Firmolux vocabulary for shared codes (GL, BEE, SAV) so
+  // BEE2, SAV1, GL04, etc. parse identically regardless of the route.
+  console.log(`[SKU:VIOLANTE] No VIOLANTE-specific prefix matched; trying Firmolux vocabulary`);
+  return parseFirmoluxSKU(sku);
+}
+
 module.exports = { parseSKU, PRODUCT_INFO };
 
 // Inline tests — run with `node src/sku-parser.js`.
@@ -173,12 +237,47 @@ if (require.main === module) {
     { input: 'GL04', expect: { productCode: 'GL', qty: 4 } },
     { input: 'MP04KG', expect: { productCode: 'MP', qty: 4 } },
     { input: 'MMB25KG-BM123', expect: { productCode: 'MMB', qty: 25 } },
+
+    // ── VIOLANTE-specific vocabulary (PS/LT/VO) ─────────────────────────────
+    // LT → IP (Piatto)
+    { input: 'LT01', brand: 'VIOLANTE', expect: { productCode: 'IP', qty: 1 } },
+    { input: 'LT05', brand: 'VIOLANTE', expect: { productCode: 'IP', qty: 5 } },
+    { input: 'LT25', brand: 'VIOLANTE', expect: { productCode: 'IP', qty: 25 } },
+    // VO → MMB (Berlina)
+    { input: 'VO01', brand: 'VIOLANTE', expect: { productCode: 'MMB', qty: 1 } },
+    { input: 'VO15', brand: 'VIOLANTE', expect: { productCode: 'MMB', qty: 15 } },
+    { input: 'VO25', brand: 'VIOLANTE', expect: { productCode: 'MMB', qty: 25 } },
+    // PS → MP (Microprimer)
+    { input: 'PS08', brand: 'VIOLANTE', expect: { productCode: 'MP', qty: 8 } },
+    { input: 'PS20', brand: 'VIOLANTE', expect: { productCode: 'MP', qty: 20 } },
+    // Tint-suffix strip on VIOLANTE-specific codes (Shopify + Amazon channels).
+    { input: 'VO01-SW7068',  brand: 'VIOLANTE', expect: { productCode: 'MMB', qty: 1 } },
+    { input: 'PS08-Natural', brand: 'VIOLANTE', expect: { productCode: 'MP',  qty: 8 } },
+
+    // ── Cross-brand identity for shared codes (GL/BEE/SAV) ──────────────────
+    // These SKUs live only in the Firmolux vocabulary; VIOLANTE reaches them
+    // via fallthrough so they cannot diverge between brands. Each pair must
+    // return the same productCode and qty regardless of the routing brand.
+    { input: 'BEE2',       brand: 'Firmolux', expect: { productCode: 'BEE', qty: 2   } },
+    { input: 'BEE2',       brand: 'VIOLANTE', expect: { productCode: 'BEE', qty: 2   } },
+    { input: 'BEE.5',      brand: 'Firmolux', expect: { productCode: 'BEE', qty: 0.5 } },
+    { input: 'BEE.5',      brand: 'VIOLANTE', expect: { productCode: 'BEE', qty: 0.5 } },
+    { input: 'SAV1',       brand: 'Firmolux', expect: { productCode: 'SAV', qty: 1   } },
+    { input: 'SAV1',       brand: 'VIOLANTE', expect: { productCode: 'SAV', qty: 1   } },
+    { input: 'SAV2',       brand: 'Firmolux', expect: { productCode: 'SAV', qty: 2   } },
+    { input: 'SAV2',       brand: 'VIOLANTE', expect: { productCode: 'SAV', qty: 2   } },
+    { input: 'GL04',       brand: 'Firmolux', expect: { productCode: 'GL',  qty: 4   } },
+    { input: 'GL04',       brand: 'VIOLANTE', expect: { productCode: 'GL',  qty: 4   } },
+    { input: 'GL20',       brand: 'Firmolux', expect: { productCode: 'GL',  qty: 20  } },
+    { input: 'GL20',       brand: 'VIOLANTE', expect: { productCode: 'GL',  qty: 20  } },
+    // Tint-suffix strip on a shared code via VIOLANTE fallthrough.
+    { input: 'GL01-BMOC45', brand: 'VIOLANTE', expect: { productCode: 'GL',  qty: 1  } },
   ];
 
   const origLog = console.log;
   console.log = () => {};
   const results = cases.map(c => {
-    const got = parseSKU(c.input);
+    const got = parseSKU(c.input, c.brand);
     const ok = got && got.productCode === c.expect.productCode && got.qty === c.expect.qty;
     return { ...c, got, ok };
   });
@@ -186,7 +285,8 @@ if (require.main === module) {
 
   const failed = results.filter(r => !r.ok);
   for (const r of failed) {
-    console.error(`FAIL ${r.input}: expected ${JSON.stringify(r.expect)}, got ${JSON.stringify(r.got)}`);
+    const label = r.brand ? `${r.input} [${r.brand}]` : r.input;
+    console.error(`FAIL ${label}: expected ${JSON.stringify(r.expect)}, got ${JSON.stringify(r.got)}`);
   }
   if (failed.length) {
     console.error(`${failed.length} of ${cases.length} tests failed`);
