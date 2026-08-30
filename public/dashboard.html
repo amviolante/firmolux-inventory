@@ -485,9 +485,13 @@
   </div>
 
   <div id="auditContainer" style="display: none; flex-direction: column;">
-    <div style="display:flex; gap:8px; margin-bottom:14px;">
+    <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
       <button id="auditFilterAll" onclick="setAuditFilter('all')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:var(--dark); color:#fff; font-size:12px; cursor:pointer;">All changes</button>
       <button id="auditFilterManual" onclick="setAuditFilter('manual')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:#fff; color:var(--dark); font-size:12px; cursor:pointer;">Manual edits only</button>
+      <div style="width:1px; height:20px; background:var(--border); margin:0 4px;"></div>
+      <button id="auditBrandAll" onclick="setAuditBrand('all')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:var(--dark); color:#fff; font-size:12px; cursor:pointer;">All brands</button>
+      <button id="auditBrandFirmolux" onclick="setAuditBrand('Firmolux')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:#fff; color:var(--dark); font-size:12px; cursor:pointer;">Firmolux</button>
+      <button id="auditBrandVIOLANTE" onclick="setAuditBrand('VIOLANTE')" style="padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:#fff; color:var(--dark); font-size:12px; cursor:pointer;">VIOLANTE</button>
     </div>
     <div id="auditList" style="display:flex; flex-direction:column; gap:0;">
       <div class="log-empty">Loading…</div>
@@ -764,7 +768,7 @@
           const time = new Date(r.processed_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
           html += `<div style="border-top: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: 80px 120px 1fr; gap: 12px; align-items: start;">
             <div style="color:var(--stone);font-size:12px">${time}</div>
-            <div style="color:var(--stone);font-size:11px">${r.shipstation_order_id || '—'}</div>
+            <div style="color:var(--stone);font-size:11px">${r.shipstation_order_id || '—'}${brandBadge(r.brand)}</div>
             <div>${deductionsHtml}</div>
           </div>`;
         }
@@ -800,9 +804,24 @@
     loadLog();
   }
 
+  // ─── Brand badge (shared by Shipment Log and Audit Trail) ────────────────
+  // Null/empty brand renders nothing so pre-migration rows stay clean.
+  // Unknown brand values also render nothing (safer than a fallback label).
+  function brandBadge(brand) {
+    if (!brand) return '';
+    if (brand === 'VIOLANTE') {
+      return `<span style="display:inline-block; margin-left:8px; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; letter-spacing:0.05em; color:#5D3A6E; background:#F0EBF5; border:1px solid #D5C7DF; vertical-align:middle;">VIO</span>`;
+    }
+    if (brand === 'Firmolux') {
+      return `<span style="display:inline-block; margin-left:8px; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; letter-spacing:0.05em; color:var(--clay); background:var(--cream); border:1px solid var(--border); vertical-align:middle;">FRM</span>`;
+    }
+    return '';
+  }
+
   // ─── Audit trail ──────────────────────────────────────────────────────────
   let currentTab = 'shipments';
   let auditFilter = 'all';
+  let auditBrand = 'all';
 
   function switchTab(tab) {
     currentTab = tab;
@@ -847,6 +866,17 @@
     loadAudit();
   }
 
+  function setAuditBrand(brand) {
+    auditBrand = brand;
+    const btns = { all: 'auditBrandAll', Firmolux: 'auditBrandFirmolux', VIOLANTE: 'auditBrandVIOLANTE' };
+    for (const [key, id] of Object.entries(btns)) {
+      const btn = document.getElementById(id);
+      if (key === brand) { btn.style.background = 'var(--dark)'; btn.style.color = '#fff'; }
+      else { btn.style.background = '#fff'; btn.style.color = 'var(--dark)'; }
+    }
+    loadAudit();
+  }
+
   const CHANGE_LABELS = {
     shipment: { label: 'Shipment', color: '#8A6D3B', bg: '#FBF6EC' },
     manual_adjust: { label: 'Manual adjust', color: '#1F6F54', bg: '#EDF7F2' },
@@ -865,8 +895,14 @@
       return;
     }
 
+    // Brand filter is client-side. Server returns all brands (SELECT *); the
+    // filter narrows here so the type + brand dimensions compose cleanly.
+    if (auditBrand !== 'all') {
+      rows = rows.filter(r => r.brand === auditBrand);
+    }
+
     if (!rows.length) {
-      container.innerHTML = '<div class="log-empty">No changes recorded yet.</div>';
+      container.innerHTML = '<div class="log-empty">No changes match the current filters.</div>';
       return;
     }
 
@@ -890,7 +926,7 @@
       html += `<div style="display:grid; grid-template-columns: 150px 130px 1fr 90px 90px 90px; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); align-items:start; font-size:13px;">
         <div style="color:var(--stone);">${when}</div>
         <div><span style="display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; font-weight:500; color:${meta.color}; background:${meta.bg};">${meta.label}</span></div>
-        <div><strong>${productName}</strong>${source}${note}</div>
+        <div><strong>${productName}</strong>${brandBadge(r.brand)}${source}${note}</div>
         <div style="text-align:right; font-weight:600; color:${deltaColor};">${deltaStr}</div>
         <div style="text-align:right; color:var(--stone);">${isNaN(before) ? '—' : (before % 1 === 0 ? before : before.toFixed(1))}</div>
         <div style="text-align:right;">${isNaN(after) ? '—' : (after % 1 === 0 ? after : after.toFixed(1))}</div>
