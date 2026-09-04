@@ -10,14 +10,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAVY = '#323251';
 const GOLD = '#DECDA6';
 
+// Frontend sends the checkbox `value` attribute (see public/color-match.html).
+// Only overrides listed here — anything else passes through unchanged.
 const PRODUCT_LABELS = {
-  grassello: 'Grassello',
-  berlina: 'Berlina',
-  milano_silver: 'Milano Silver',
-  milano_gold: 'Milano Gold',
-  piatto: 'Piatto',
-  mezzo: 'Mezzo',
-  primer: 'Primer',
+  'Berlina': 'Marmorino Berlina',
 };
 
 async function initColorMatchSchema(client) {
@@ -178,61 +174,136 @@ function addressBlock(p) {
   return [name, line1, line2].filter(Boolean).join('\n');
 }
 
+// ─── Slack ticket helpers ─────────────────────────────────────────────────────
+
+function actionLineForSlack(p) {
+  if (p.purpose === 'reorder') {
+    return p.previous_code
+      ? `*REORDER*  ·  pull recipe *${p.previous_code}*`
+      : `*REORDER*  ·  no code given, look up by email`;
+  }
+  if (p.has_order === 'yes') {
+    return p.order_number
+      ? `*HAS ORDER #${p.order_number}*`
+      : `*HAS ORDER*  ·  no number, look up by name/email`;
+  }
+  if (p.has_order === 'no') {
+    return p.returning === 'yes'
+      ? `*SEND INVOICE*  ·  existing customer`
+      : `*SEND INVOICE*  ·  first order, ship-to below`;
+  }
+  return `*NEW MATCH*`;
+}
+
+function actionLinePlain(p) {
+  if (p.purpose === 'reorder') {
+    return p.previous_code
+      ? `REORDER (pull recipe ${p.previous_code})`
+      : `REORDER (look up by email)`;
+  }
+  if (p.has_order === 'yes') {
+    return p.order_number
+      ? `HAS ORDER #${p.order_number}`
+      : `HAS ORDER (look up by name/email)`;
+  }
+  if (p.has_order === 'no') {
+    return p.returning === 'yes'
+      ? `SEND INVOICE (existing customer)`
+      : `SEND INVOICE (first order, ship-to below)`;
+  }
+  return `NEW MATCH`;
+}
+
+// Amount broken into per-product lines when the customer typed a comma-separated
+// list; single-line otherwise (sq-ft mode, help mode).
+function amountLines(p) {
+  if (p.qty_mode === 'quantity' && p.quantity) {
+    return p.quantity.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  if (p.qty_mode === 'sqft') {
+    const parts = [];
+    if (p.sqft) parts.push(`${p.sqft} sq ft`);
+    if (p.coats) parts.push(`${p.coats} coats`);
+    return parts.length ? [parts.join(', ')] : [];
+  }
+  if (p.qty_mode === 'help') return ['Needs help calculating'];
+  return [];
+}
+
+// Sample field text WITHOUT paint reference (Paint ref is a separate field).
+function sampleFieldValue(p) {
+  if (p.purpose !== 'new') return null;
+  const types = (p.sample_types || []).slice();
+  const hasOther = types.some(t => t.toLowerCase() === 'other');
+  const nonOther = types.filter(t => t.toLowerCase() !== 'other');
+  const parts = [];
+  if (nonOther.length) parts.push(nonOther.join(', '));
+  if (hasOther && p.sample_other) parts.push(`Other: ${p.sample_other}`);
+  else if (hasOther) parts.push('Other');
+  return parts.join(', ') || null;
+}
+
 function buildSlackBlocks(code, p) {
   const isNew = p.purpose === 'new';
+  const name = `${p.first_name} ${p.last_name}`.trim();
   const blocks = [];
+
+  // 1. Header: FX-1000  ·  Anthony Violante
   blocks.push({
     type: 'header',
-    text: { type: 'plain_text', text: `${code}  ·  ${isNew ? 'New color match' : 'Reorder'}` },
+    text: { type: 'plain_text', text: `${code}  ·  ${name}` },
   });
 
-  const customerLines = [`*Customer:* ${p.first_name} ${p.last_name}`, p.email];
-  if (p.phone) customerLines.push(p.phone);
-
-  const fieldParts = [customerLines.join('\n')];
-  const ol = orderLine(p); if (ol) fieldParts.push(`*Order:* ${ol}`);
-  const prods = labelProducts(p.products);
-  if (prods) fieldParts.push(`*Products:* ${prods}`);
-  else if (p.qty_mode) fieldParts.push('*Products:* Not sure, wants recommendation');
-  const amt = amountLine(p); if (amt) fieldParts.push(`*Amount:* ${amt}`);
-  const pr = primerLine(p); if (pr) fieldParts.push(`*Primer:* ${pr}`);
-  if (p.deadline) fieldParts.push(`*Deadline:* ${p.deadline}`);
-
+  // 2. Action line
   blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: fieldParts.join('\n') },
+    text: { type: 'mrkdwn', text: actionLineForSlack(p) },
   });
 
-  if (!isNew) {
-    const prevText = p.previous_code
-      ? `*Previous formula:* ${p.previous_code}`
-      : `*Previous formula:* Doesn't remember, look up by email`;
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: prevText } });
+  // 3. Fields — Products | Amount, Primer | Deadline, Sample | Paint ref.
+  //    Values for Products and Amount are bolded (they're what Matthew mixes from).
+  const fields = [];
+  const prods = labelProducts(p.products);
+  if (prods) fields.push({ type: 'mrkdwn', text: `*Products*\n*${prods}*` });
+  const amts = amountLines(p);
+  if (amts.length) {
+    const bolded = amts.map(l => `*${l}*`).join('\n');
+    fields.push({ type: 'mrkdwn', text: `*Amount*\n${bolded}` });
+  }
+  const primer = primerLine(p);
+  if (primer) fields.push({ type: 'mrkdwn', text: `*Primer*\n${primer}` });
+  if (p.deadline) fields.push({ type: 'mrkdwn', text: `*Deadline*\n${p.deadline}` });
+  const sample = sampleFieldValue(p);
+  if (sample) fields.push({ type: 'mrkdwn', text: `*Sample*\n${sample}` });
+  if (isNew && p.paint_reference) fields.push({ type: 'mrkdwn', text: `*Paint ref*\n${p.paint_reference}` });
+  if (fields.length) {
+    blocks.push({ type: 'section', fields: fields.slice(0, 10) });
   }
 
-  const sl = sampleLine(p);
-  if (isNew && sl) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Sample:* ${sl}` } });
-  }
-
+  // 4. Ship-to (first-time customers only)
   const addr = addressBlock(p);
   if (addr) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Ship to:*\n${addr}` } });
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Ship to*\n${addr}` } });
   }
 
-  if (p.notes) {
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*Notes:*\n${p.notes}` } });
-  }
+  // 5. Email/phone (plain) + notes on the next line if given
+  const contactLine = p.phone ? `${p.email} · ${p.phone}` : p.email;
+  const contactText = p.notes ? `${contactLine}\n${p.notes}` : contactLine;
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: contactText } });
 
-  const context = isNew
-    ? `Awaiting sample. When it arrives, save the recipe as ${code} in the formula system.`
-    : `Reorder. Pull recipe ${p.previous_code || '(look up by email)'} and send invoice.`;
-  blocks.push({
-    type: 'context',
-    elements: [{ type: 'mrkdwn', text: context }],
-  });
+  // 6. Divider
+  blocks.push({ type: 'divider' });
 
-  const fallback = `${code} — ${isNew ? 'New color match' : 'Reorder'} from ${p.first_name} ${p.last_name}`;
+  // 7. Context
+  const contextText = isNew
+    ? `Awaiting sample. Save the recipe as *${code}* when it's matched.`
+    : (p.previous_code
+        ? `No sample needed. Pull *${p.previous_code}*, mix, invoice.`
+        : `No sample needed. Look up recipe by email, then mix, invoice.`);
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: contextText }] });
+
+  // Fallback text: single-line notification-friendly summary
+  const fallback = `${code} · ${name} · ${actionLinePlain(p)}`;
   return { text: fallback, blocks };
 }
 
