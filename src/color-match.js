@@ -346,10 +346,13 @@ function buildEmailText(code, p) {
   ].join('\n');
 }
 
+function emailConfigured() {
+  return !!(process.env.RESEND_API_KEY && process.env.COLOR_MATCH_FROM);
+}
+
 async function sendCustomerEmail(code, p) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.COLOR_MATCH_FROM;
-  if (!apiKey || !from) return { ok: false, error: 'resend_not_configured' };
   const resend = new Resend(apiKey);
   const isNew = p.purpose === 'new';
   const subject = isNew
@@ -450,19 +453,24 @@ function mountColorMatchRoutes(app, pool) {
       console.error(`color-match: Slack post threw for ${code}:`, err.message);
     }
 
-    try {
-      const emailResult = await sendCustomerEmail(code, p);
-      if (emailResult.ok) {
-        try {
-          await pool.query('UPDATE color_match_requests SET email_sent = true WHERE id = $1', [row.id]);
-        } catch (err) {
-          console.error(`color-match: failed to flip email_sent for ${code}:`, err.message);
+    // Email is optional. When RESEND_API_KEY / COLOR_MATCH_FROM aren't set,
+    // skip silently — the number is already stored and posted to Slack; the
+    // customer can screenshot the confirmation page (per the new ticket copy).
+    if (emailConfigured()) {
+      try {
+        const emailResult = await sendCustomerEmail(code, p);
+        if (emailResult.ok) {
+          try {
+            await pool.query('UPDATE color_match_requests SET email_sent = true WHERE id = $1', [row.id]);
+          } catch (err) {
+            console.error(`color-match: failed to flip email_sent for ${code}:`, err.message);
+          }
+        } else {
+          console.error(`color-match: email send failed for ${code}: ${emailResult.error}`);
         }
-      } else {
-        console.error(`color-match: email send failed for ${code}: ${emailResult.error}`);
+      } catch (err) {
+        console.error(`color-match: email send threw for ${code}:`, err.message);
       }
-    } catch (err) {
-      console.error(`color-match: email send threw for ${code}:`, err.message);
     }
 
     res.json({ code });

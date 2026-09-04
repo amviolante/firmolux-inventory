@@ -483,7 +483,7 @@
         <div class="addr" id="shipTo">Firmolux Color Lab
 [WAREHOUSE STREET ADDRESS]
 Palmetto, FL [ZIP]</div>
-        <p>We've emailed this number to <span id="emailOut"></span>. <span class="keep">Keep it.</span> Once your color is matched, this is the number you'll use to reorder it anytime, no sample needed.</p>
+        <p><span class="keep">Screenshot this page or write the number down now.</span> If you lose it, email info@firmolux.com with your name and we'll look it up. Once your color is matched, this is the number you'll use to reorder it anytime, no sample needed.</p>
       </div>
     </div>
 
@@ -614,7 +614,6 @@ Palmetto, FL [ZIP]</div>
     document.getElementById('ticketReorder').style.display = isReorder ? '' : 'none';
     document.getElementById('codeOut').textContent = code;
     document.getElementById('codeOutRe').textContent = code;
-    document.getElementById('emailOut').textContent = data.email;
     document.getElementById('emailOutRe').textContent = data.email;
     done.style.display = 'block';
     window.scrollTo({ top: 0, behavior: 'smooth' });
