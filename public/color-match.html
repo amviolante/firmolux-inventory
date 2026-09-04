@@ -12,7 +12,6 @@
     --navy: #323251;
     --navy-deep: #262640;
     --gold: #DECDA6;
-    --gold-deep: #C9B27E;
     --ink: #22233A;
     --ink-soft: #5B5D75;
     --line: #CFCFD9;
@@ -23,218 +22,158 @@
     --sans: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; }
+  html, body { margin: 0; min-height: 100%; }
   body {
     font-family: var(--sans);
     color: var(--ink);
     background: var(--plaster);
-    line-height: 1.55;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
   }
 
   /* Header */
-  .masthead {
-    background: var(--navy);
-    color: var(--white);
-    padding: 28px 24px 40px;
-  }
-  .masthead-inner {
-    max-width: 680px;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-  }
-  .masthead img { width: 84px; height: 84px; border-radius: 6px; flex-shrink: 0; }
-  .masthead h1 {
-    font-family: var(--serif);
-    font-weight: 500;
-    font-size: 1.55rem;
-    letter-spacing: 0.06em;
-    margin: 0 0 6px;
-  }
-  .masthead p { margin: 0; color: var(--gold); font-size: 0.95rem; }
+  .masthead { background: var(--navy); color: var(--white); padding: 18px 20px; }
+  .masthead-inner { max-width: 600px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+  .masthead img { width: 56px; height: 56px; border-radius: 4px; flex-shrink: 0; }
+  .masthead h1 { font-family: var(--serif); font-weight: 500; font-size: 1.2rem; letter-spacing: 0.06em; margin: 0; }
+  .masthead p { margin: 2px 0 0; color: var(--gold); font-size: 0.85rem; }
 
-  /* Form shell */
-  main { max-width: 680px; margin: 0 auto; padding: 8px 24px 80px; }
-  .intro {
-    margin: 32px 0 8px;
-    color: var(--ink-soft);
-    font-size: 0.97rem;
-    max-width: 58ch;
-  }
-  fieldset {
-    border: 0;
-    padding: 0;
-    margin: 36px 0 0;
-  }
-  legend {
-    font-family: var(--serif);
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--navy);
-    letter-spacing: 0.04em;
-    padding: 0;
-    margin-bottom: 4px;
-    border-bottom: 2px solid var(--gold);
+  /* Progress */
+  .progress { height: 4px; background: #DCDBE3; }
+  .progress > div { height: 100%; background: var(--gold); width: 0; transition: width .25s ease; }
+
+  /* Stage */
+  main { flex: 1; display: flex; flex-direction: column; }
+  .stage {
+    max-width: 600px;
     width: 100%;
-    padding-bottom: 8px;
+    margin: 0 auto;
+    padding: 40px 20px 32px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
-  .field { margin-top: 22px; }
-  .field > label, .field > .label {
-    display: block;
+  .step { display: none; flex: 1; flex-direction: column; }
+  .step.on { display: flex; }
+  @media (prefers-reduced-motion: no-preference) {
+    .step.on { animation: slidein .22s ease-out; }
+    @keyframes slidein { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+  }
+  .q {
+    font-family: var(--serif);
     font-weight: 600;
-    font-size: 0.95rem;
-    margin-bottom: 8px;
+    font-size: 1.35rem;
+    line-height: 1.3;
+    color: var(--navy);
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
   }
-  .help { color: var(--ink-soft); font-size: 0.86rem; margin: -4px 0 8px; }
+  .help { color: var(--ink-soft); font-size: 0.92rem; margin: 0 0 22px; max-width: 52ch; }
+  .q + .body { margin-top: 20px; }
+
+  /* Inputs */
+  label.lbl { display: block; font-weight: 600; font-size: 0.9rem; margin: 16px 0 6px; }
+  label.lbl:first-child { margin-top: 0; }
   .optional { color: var(--ink-soft); font-weight: 400; }
-  input[type=text], input[type=email], input[type=tel], input[type=number], input[type=date], textarea, select {
+  input[type=text], input[type=email], input[type=tel], input[type=number], input[type=date], textarea {
     width: 100%;
     font: inherit;
-    font-size: 1rem;
-    padding: 12px 14px;
+    font-size: 1.05rem;
+    padding: 14px;
     border: 1.5px solid var(--line);
     border-radius: 4px;
     background: var(--white);
     color: var(--ink);
   }
-  textarea { min-height: 96px; resize: vertical; }
-  input:focus, textarea:focus, select:focus, .choice input:focus-visible + span {
-    outline: 3px solid var(--gold);
-    outline-offset: 1px;
-    border-color: var(--navy);
-  }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
+  textarea { min-height: 120px; resize: vertical; }
+  input:focus, textarea:focus { outline: 3px solid var(--gold); outline-offset: 1px; border-color: var(--navy); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
 
   /* Choices */
   .choices { display: grid; gap: 10px; }
-  .choices.grid-2 { grid-template-columns: 1fr 1fr; }
-  @media (max-width: 520px) { .choices.grid-2 { grid-template-columns: 1fr; } }
   .choice { position: relative; display: block; cursor: pointer; }
   .choice input { position: absolute; opacity: 0; width: 0; height: 0; }
   .choice span {
     display: block;
-    padding: 12px 14px 12px 44px;
+    padding: 15px 16px 15px 48px;
     border: 1.5px solid var(--line);
     border-radius: 4px;
     background: var(--white);
-    font-size: 0.97rem;
+    font-size: 1rem;
     position: relative;
     transition: border-color .12s, background .12s;
   }
   .choice span::before {
-    content: "";
-    position: absolute;
-    left: 14px; top: 50%;
-    width: 18px; height: 18px;
-    transform: translateY(-50%);
-    border: 1.5px solid var(--line);
-    border-radius: 50%;
-    background: var(--white);
+    content: ""; position: absolute; left: 16px; top: 50%;
+    width: 18px; height: 18px; transform: translateY(-50%);
+    border: 1.5px solid var(--line); border-radius: 50%; background: var(--white);
   }
   .choice.box span::before { border-radius: 3px; }
   .choice input:checked + span { border-color: var(--navy); background: #EEF0F6; }
-  .choice input:checked + span::before {
-    background: var(--navy);
-    border-color: var(--navy);
-    box-shadow: inset 0 0 0 3.5px var(--white);
-  }
+  .choice input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 1px; }
+  .choice input:checked + span::before { background: var(--navy); border-color: var(--navy); box-shadow: inset 0 0 0 3.5px var(--white); }
   .choice.box input:checked + span::before {
     box-shadow: none;
     background: var(--navy) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") center/13px no-repeat;
   }
-
-  /* Conditional sections */
-  .cond { display: none; }
-  .cond.on { display: block; }
-  .sub { margin-top: 14px; padding-left: 18px; border-left: 3px solid var(--gold); }
-
-  .err { color: var(--error); font-size: 0.86rem; margin-top: 6px; display: none; }
-  .invalid .err { display: block; }
-  .invalid input[type=text], .invalid input[type=email], .invalid input[type=tel], .invalid input[type=number] { border-color: var(--error); }
-
-  /* Submit */
-  .actions { margin-top: 40px; }
-  button.primary {
-    font: inherit;
-    font-weight: 600;
-    font-size: 1rem;
-    letter-spacing: 0.02em;
-    background: var(--navy);
-    color: var(--white);
-    border: 0;
-    border-radius: 4px;
-    padding: 15px 28px;
-    cursor: pointer;
-    width: 100%;
+  select {
+    width: 100%; font: inherit; font-size: 1.05rem; padding: 14px 40px 14px 14px;
+    border: 1.5px solid var(--line); border-radius: 4px; background: var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4' fill='none' stroke='%23323251' stroke-width='1.8'/%3E%3C/svg%3E") right 14px center/14px no-repeat;
+    color: var(--ink); -webkit-appearance: none; appearance: none;
   }
-  button.primary:hover { background: var(--navy-deep); }
-  button.primary:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
-  button.primary[disabled] { opacity: .6; cursor: default; }
-  .form-error { color: var(--error); margin-top: 12px; display: none; }
+  select:focus { outline: 3px solid var(--gold); outline-offset: 1px; border-color: var(--navy); }
+  .qty-row { display: grid; grid-template-columns: 1fr 96px; gap: 10px; align-items: end; margin-top: 16px; }
+  .qty-row:first-child { margin-top: 0; }
+  .qty-row .lbl { margin-top: 0; }
+  .sub { margin-top: 14px; padding-left: 16px; border-left: 3px solid var(--gold); display: none; }
+  .sub.on { display: block; }
 
-  /* Ticket (thank you) */
+  .err { color: var(--error); font-size: 0.88rem; margin-top: 10px; display: none; }
+  .step.invalid .err { display: block; }
+
+  /* Nav */
+  .nav { margin-top: auto; padding-top: 28px; display: flex; gap: 10px; align-items: center; }
+  .btn {
+    font: inherit; font-weight: 600; font-size: 1rem; letter-spacing: 0.02em;
+    border: 0; border-radius: 4px; padding: 15px 24px; cursor: pointer;
+  }
+  .btn.primary { background: var(--navy); color: var(--white); flex: 1; }
+  .btn.primary:hover { background: var(--navy-deep); }
+  .btn.primary[disabled] { opacity: .6; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--ink-soft); padding-left: 8px; padding-right: 8px; }
+  .btn.ghost:hover { color: var(--navy); }
+  .btn:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .hint { color: var(--ink-soft); font-size: 0.8rem; margin-top: 10px; }
+  .form-error { color: var(--error); font-size: 0.9rem; margin-top: 10px; display: none; }
+
+  /* Ticket */
   #done { display: none; }
-  .ticket {
-    margin: 40px 0 0;
-    background: var(--navy);
-    color: var(--white);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .ticket-top { padding: 40px 32px 32px; text-align: center; }
-  .ticket-top .eyebrow {
-    font-family: var(--serif);
-    font-size: 0.95rem;
-    letter-spacing: 0.08em;
-    color: var(--gold);
-    margin: 0 0 10px;
-  }
+  .ticket { background: var(--navy); color: var(--white); border-radius: 6px; overflow: hidden; }
+  .ticket-top { padding: 36px 24px 28px; text-align: center; }
+  .ticket-top .eyebrow { font-family: var(--serif); font-size: 0.9rem; letter-spacing: 0.08em; color: var(--gold); margin: 0 0 10px; }
   .ticket-top .code {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: clamp(3.4rem, 14vw, 5.6rem);
-    line-height: 1;
-    letter-spacing: 0.04em;
-    color: var(--gold);
-    margin: 0;
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(3.2rem, 15vw, 5.4rem); line-height: 1; letter-spacing: 0.04em;
+    color: var(--gold); margin: 0;
   }
-  .ticket-tear {
-    border-top: 2px dashed rgba(222,205,166,.55);
-    position: relative;
-  }
+  .ticket-tear { border-top: 2px dashed rgba(222,205,166,.55); position: relative; }
   .ticket-tear::before, .ticket-tear::after {
-    content: ""; position: absolute; top: -13px; width: 24px; height: 24px;
-    border-radius: 50%; background: var(--plaster);
+    content: ""; position: absolute; top: -13px; width: 24px; height: 24px; border-radius: 50%; background: var(--plaster);
   }
-  .ticket-tear::before { left: -12px; }
-  .ticket-tear::after { right: -12px; }
-  .ticket-body { padding: 28px 32px 34px; }
-  .ticket-body .important {
-    font-weight: 600;
-    font-size: 1.12rem;
-    line-height: 1.4;
-    margin: 0 0 12px;
-  }
+  .ticket-tear::before { left: -12px; } .ticket-tear::after { right: -12px; }
+  .ticket-body { padding: 24px 24px 30px; }
+  .ticket-body .important { font-weight: 600; font-size: 1.08rem; line-height: 1.4; margin: 0 0 12px; }
   .ticket-body .important strong { color: var(--gold); }
-  .ticket-body p { margin: 0 0 14px; color: #DDDEE8; font-size: 0.97rem; }
+  .ticket-body p { margin: 0 0 14px; color: #DDDEE8; font-size: 0.95rem; }
   .ticket-body .addr {
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(222,205,166,.35);
-    border-radius: 4px;
-    padding: 14px 16px;
-    color: var(--white);
-    margin: 18px 0;
-    white-space: pre-line;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(222,205,166,.35); border-radius: 4px;
+    padding: 14px 16px; color: var(--white); margin: 18px 0; white-space: pre-line; font-size: 1rem;
   }
   .ticket-body .keep { color: var(--gold); }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .cond.on { animation: reveal .18s ease-out; }
-    @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-  }
 </style>
 </head>
 <body>
@@ -248,229 +187,195 @@
     </div>
   </div>
 </header>
+<div class="progress"><div id="bar"></div></div>
 
 <main>
-  <form id="cm" novalidate>
-    <p class="intro">Takes about two minutes. At the end you'll get a formula number to write on your sample so we can connect it to this request.</p>
+  <form id="cm" class="stage" novalidate autocomplete="on">
 
-    <!-- Step 0: purpose -->
-    <fieldset>
-      <legend>What can we do for you?</legend>
-      <div class="field">
-        <div class="choices">
-          <label class="choice"><input type="radio" name="purpose" value="new" required><span>Match a new color from a sample I'll send in</span></label>
-          <label class="choice"><input type="radio" name="purpose" value="reorder"><span>Reorder a custom color you've already matched for me</span></label>
-        </div>
-        <div class="err">Choose one to get started.</div>
+    <!-- 1 purpose -->
+    <section class="step" data-step="purpose">
+      <p class="q">What can we do for you?</p>
+      <p class="help">Takes about two minutes. At the end you'll get a formula number to write on your sample.</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="purpose" value="new"><span>Match a new color from a sample I'll send in</span></label>
+        <label class="choice"><input type="radio" name="purpose" value="reorder"><span>Reorder a custom color you've already matched for me</span></label>
       </div>
-    </fieldset>
+      <div class="err">Choose one to get started.</div>
+    </section>
 
-    <!-- About you -->
-    <fieldset class="cond" data-show="purpose:new,reorder">
-      <legend>About you</legend>
-      <div class="row">
-        <div class="field">
-          <label for="first">First name</label>
-          <input id="first" name="first_name" type="text" autocomplete="given-name" required>
-          <div class="err">Enter your first name.</div>
-        </div>
-        <div class="field">
-          <label for="last">Last name</label>
-          <input id="last" name="last_name" type="text" autocomplete="family-name" required>
-          <div class="err">Enter your last name.</div>
-        </div>
+    <!-- 2 name -->
+    <section class="step" data-step="name">
+      <p class="q">What's your name?</p>
+      <div class="body row">
+        <div><label class="lbl" for="first">First name</label><input id="first" name="first_name" type="text" autocomplete="given-name"></div>
+        <div><label class="lbl" for="last">Last name</label><input id="last" name="last_name" type="text" autocomplete="family-name"></div>
       </div>
-      <div class="field">
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" autocomplete="email" required>
-        <div class="err">Enter a valid email so we can send your formula number.</div>
-      </div>
-    </fieldset>
+      <div class="err">Enter your first and last name.</div>
+    </section>
 
-    <!-- Reorder branch -->
-    <fieldset class="cond" data-show="purpose:reorder">
-      <legend>Your custom color</legend>
-      <div class="field">
-        <label for="prev_code">Formula number or color name <span class="optional">(if you remember it)</span></label>
-        <input id="prev_code" name="previous_code" type="text" placeholder="FX-1042">
-        <p class="help" style="margin-top:8px">Don't worry if not. We'll find it by your name and email.</p>
-      </div>
-    </fieldset>
+    <!-- 3 email -->
+    <section class="step" data-step="email">
+      <p class="q">And your email?</p>
+      <p class="help">We use this to find your order or your previous formulas.</p>
+      <input id="email" name="email" type="email" autocomplete="email" inputmode="email">
+      <div class="err">Enter a valid email.</div>
+    </section>
 
-    <!-- New match: order status -->
-    <fieldset class="cond" data-show="purpose:new">
-      <legend>Your order</legend>
-      <div class="field">
-        <span class="label">Have you already placed an order for the product you want this color matched in?</span>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="has_order" value="yes" required><span>Yes, I have an order</span></label>
-          <label class="choice"><input type="radio" name="has_order" value="no"><span>No, please create an order for me</span></label>
-        </div>
-        <div class="err">Let us know if you've ordered yet.</div>
-      </div>
+    <!-- reorder: previous code -->
+    <section class="step" data-step="previous_code" data-if="purpose=reorder">
+      <p class="q">Do you remember the formula number or color name?</p>
+      <p class="help">Don't worry if not. We'll find it by your name and email.</p>
+      <input id="prev_code" name="previous_code" type="text" placeholder="FX-1042">
+    </section>
 
-      <div class="cond sub" data-show="has_order:yes">
-        <div class="field">
-          <label for="order_number">Order number <span class="optional">(if you have it handy)</span></label>
-          <input id="order_number" name="order_number" type="text" placeholder="e.g. 13949">
-          <p class="help" style="margin-top:8px">No problem if not. We'll find it by your name or email.</p>
-        </div>
+    <!-- new: has order -->
+    <section class="step" data-step="has_order" data-if="purpose=new">
+      <p class="q">Have you already placed an order for the product you want this color matched in?</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="has_order" value="yes"><span>Yes, I have an order</span></label>
+        <label class="choice"><input type="radio" name="has_order" value="no"><span>No, please create an order for me</span></label>
       </div>
+      <div class="err">Let us know if you've ordered yet.</div>
+    </section>
 
-      <div class="cond sub" data-show="has_order:no">
-        <div class="field">
-          <span class="label">Have you ordered from Firmolux before?</span>
-          <div class="choices">
-            <label class="choice"><input type="radio" name="returning" value="yes" required><span>Yes, I'm an existing customer</span></label>
-            <label class="choice"><input type="radio" name="returning" value="no"><span>No, this is my first order</span></label>
-          </div>
-          <div class="err">Let us know if you've ordered before.</div>
-        </div>
-      </div>
-    </fieldset>
+    <section class="step" data-step="order_number" data-if="has_order=yes">
+      <p class="q">Do you have your order number handy?</p>
+      <p class="help">No problem if not. We'll find it by your name or email.</p>
+      <input id="order_number" name="order_number" type="text" placeholder="e.g. 13949" inputmode="numeric">
+    </section>
 
-    <!-- First-time customer contact -->
-    <fieldset class="cond" data-show="returning:no">
-      <legend>Where should we ship?</legend>
-      <div class="field">
-        <label for="phone">Phone</label>
-        <input id="phone" name="phone" type="tel" autocomplete="tel" required>
-        <div class="err">Enter a phone number.</div>
+    <section class="step" data-step="returning" data-if="has_order=no">
+      <p class="q">Have you ordered from Firmolux before?</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="returning" value="yes"><span>Yes, I'm an existing customer</span></label>
+        <label class="choice"><input type="radio" name="returning" value="no"><span>No, this is my first order</span></label>
       </div>
-      <div class="field">
-        <label for="addr1">Street address</label>
-        <input id="addr1" name="address1" type="text" autocomplete="address-line1" required>
-        <div class="err">Enter a street address.</div>
-      </div>
-      <div class="field">
-        <label for="addr2">Apt, suite, unit <span class="optional">(optional)</span></label>
+      <div class="err">Let us know if you've ordered before.</div>
+    </section>
+
+    <!-- first-time: phone + address -->
+    <section class="step" data-step="phone" data-if="returning=no">
+      <p class="q">What's the best phone number for you?</p>
+      <input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel">
+      <div class="err">Enter a phone number.</div>
+    </section>
+
+    <section class="step" data-step="address" data-if="returning=no">
+      <p class="q">Where should we ship your order?</p>
+      <div class="body">
+        <label class="lbl" for="addr1">Street address</label>
+        <input id="addr1" name="address1" type="text" autocomplete="address-line1">
+        <label class="lbl" for="addr2">Apt, suite, unit <span class="optional">(optional)</span></label>
         <input id="addr2" name="address2" type="text" autocomplete="address-line2">
-      </div>
-      <div class="row">
-        <div class="field">
-          <label for="city">City</label>
-          <input id="city" name="city" type="text" autocomplete="address-level2" required>
-          <div class="err">Enter a city.</div>
+        <div class="row">
+          <div><label class="lbl" for="city">City</label><input id="city" name="city" type="text" autocomplete="address-level2"></div>
+          <div><label class="lbl" for="state">State</label><input id="state" name="state" type="text" autocomplete="address-level1"></div>
         </div>
-        <div class="field">
-          <label for="state">State</label>
-          <input id="state" name="state" type="text" autocomplete="address-level1" required>
-          <div class="err">Enter a state.</div>
-        </div>
+        <label class="lbl" for="zip">ZIP</label>
+        <input id="zip" name="zip" type="text" autocomplete="postal-code" inputmode="numeric" style="max-width:200px">
       </div>
-      <div class="field" style="max-width:220px">
-        <label for="zip">ZIP</label>
-        <input id="zip" name="zip" type="text" autocomplete="postal-code" inputmode="numeric" required>
-        <div class="err">Enter a ZIP code.</div>
-      </div>
-    </fieldset>
+      <div class="err">Fill in street, city, state, and ZIP.</div>
+    </section>
 
-    <!-- Product and quantity: shown for no-order path and reorder path -->
-    <fieldset class="cond" data-show="has_order:no|purpose:reorder">
-      <legend>What we're making for you</legend>
+    <!-- products, quantity, primer: no-order path and reorder path -->
+    <section class="step" data-step="products" data-if="has_order=no|purpose=reorder">
+      <p class="q">Which product(s) should we match the color in?</p>
+      <p class="help">Pick all that apply.</p>
+      <div class="choices">
+        <label class="choice box"><input type="checkbox" name="products" value="Grassello"><span>Grassello</span></label>
+        <label class="choice box"><input type="checkbox" name="products" value="Berlina"><span>Marmorino Berlina</span></label>
+        <label class="choice box"><input type="checkbox" name="products" value="Piatto"><span>Piatto</span></label>
+        <label class="choice box"><input type="checkbox" name="products" value="Mezzo"><span>Mezzo</span></label>
+        <label class="choice box"><input type="checkbox" name="products" value="Milano Silver"><span>Milano Silver</span></label>
+        <label class="choice box"><input type="checkbox" name="products" value="Milano Gold"><span>Milano Gold</span></label>
+        <label class="choice box"><input type="checkbox" name="products" value="Not sure"><span>Not sure, I'd like a recommendation</span></label>
+      </div>
+      <div class="err">Pick at least one, or choose "Not sure."</div>
+    </section>
 
-      <div class="field">
-        <span class="label">Which product(s) should we match the color in?</span>
-        <div class="choices grid-2">
-          <label class="choice box"><input type="checkbox" name="products" value="Grassello"><span>Grassello</span></label>
-          <label class="choice box"><input type="checkbox" name="products" value="Berlina"><span>Berlina</span></label>
-          <label class="choice box"><input type="checkbox" name="products" value="Piatto"><span>Piatto</span></label>
-          <label class="choice box"><input type="checkbox" name="products" value="Mezzo"><span>Mezzo</span></label>
-          <label class="choice box"><input type="checkbox" name="products" value="Milano Silver"><span>Milano Silver</span></label>
-          <label class="choice box"><input type="checkbox" name="products" value="Milano Gold"><span>Milano Gold</span></label>
-          <label class="choice box"><input type="checkbox" name="products" value="Not sure"><span>Not sure, I'd like a recommendation</span></label>
-        </div>
-        <div class="err">Pick at least one, or choose "Not sure."</div>
+    <section class="step" data-step="qty_mode" data-if="has_order=no|purpose=reorder">
+      <p class="q">How much do you need?</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="qty_mode" value="quantity"><span>I know the quantity</span></label>
+        <label class="choice"><input type="radio" name="qty_mode" value="sqft"><span>I know the square footage</span></label>
+        <label class="choice"><input type="radio" name="qty_mode" value="help"><span>Not sure, please help me calculate</span></label>
       </div>
+      <div class="err">Choose one so we can size the order.</div>
+    </section>
 
-      <div class="field">
-        <span class="label">How much do you need?</span>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="qty_mode" value="quantity" required><span>I know the quantity</span></label>
-          <label class="choice"><input type="radio" name="qty_mode" value="sqft"><span>I know the square footage</span></label>
-          <label class="choice"><input type="radio" name="qty_mode" value="help"><span>Not sure, please help me calculate</span></label>
-        </div>
-        <div class="err">Choose one so we can size the order.</div>
+    <section class="step" data-step="quantity" data-if="qty_mode=quantity">
+      <p class="q">How much of each product?</p>
+      <p class="help">Same sizes as our store.</p>
+      <div class="body" id="qtyRows"></div>
+      <input type="hidden" name="quantity" id="qty">
+      <div class="err">Pick a size for each product.</div>
+    </section>
 
-        <div class="cond sub" data-show="qty_mode:quantity">
-          <div class="field">
-            <label for="qty">Quantity per product</label>
-            <input id="qty" name="quantity" type="text" placeholder="e.g. 2 buckets Grassello, 1 bucket Berlina" required>
-            <div class="err">Tell us how much of each product.</div>
-          </div>
-        </div>
-        <div class="cond sub" data-show="qty_mode:sqft">
-          <div class="row">
-            <div class="field">
-              <label for="sqft">Square feet to cover</label>
-              <input id="sqft" name="sqft" type="number" min="1" inputmode="numeric" required>
-              <div class="err">Enter the square footage.</div>
-            </div>
-            <div class="field">
-              <label for="coats">Number of coats <span class="optional">(if known)</span></label>
-              <input id="coats" name="coats" type="number" min="1" max="6" inputmode="numeric">
-            </div>
-          </div>
-        </div>
+    <section class="step" data-step="sqft" data-if="qty_mode=sqft">
+      <p class="q">How many square feet are you covering?</p>
+      <div class="body row">
+        <div><label class="lbl" for="sqft">Square feet</label><input id="sqft" name="sqft" type="number" min="1" inputmode="numeric"></div>
+        <div><label class="lbl" for="coats">Number of coats <span class="optional">(if known)</span></label><input id="coats" name="coats" type="number" min="1" max="6" inputmode="numeric"></div>
       </div>
+      <div class="err">Enter the square footage.</div>
+    </section>
 
-      <div class="field">
-        <span class="label">Do you need primer?</span>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="primer" value="yes" required><span>Yes, include primer</span></label>
-          <label class="choice"><input type="radio" name="primer" value="no"><span>No, I already have it</span></label>
-          <label class="choice"><input type="radio" name="primer" value="unsure"><span>Not sure, please advise</span></label>
-        </div>
-        <div class="err">Let us know about primer.</div>
+    <section class="step" data-step="primer" data-if="has_order=no|purpose=reorder">
+      <p class="q">Do you need primer?</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="primer" value="yes"><span>Yes, include primer</span></label>
+        <label class="choice"><input type="radio" name="primer" value="no"><span>No, I already have it</span></label>
+        <label class="choice"><input type="radio" name="primer" value="unsure"><span>Not sure, please advise</span></label>
       </div>
+      <div class="err">Let us know about primer.</div>
+    </section>
 
-      <div class="field">
-        <label for="deadline">Need it by <span class="optional">(optional)</span></label>
-        <input id="deadline" name="deadline" type="date" style="max-width:240px">
-      </div>
-    </fieldset>
+    <section class="step" data-step="deadline" data-if="has_order=no|purpose=reorder">
+      <p class="q">Do you need it by a certain date?</p>
+      <p class="help">Optional. Skip if you're flexible.</p>
+      <input id="deadline" name="deadline" type="date" style="max-width:240px">
+    </section>
 
-    <!-- Sample details: new match only -->
-    <fieldset class="cond" data-show="purpose:new">
-      <legend>Your sample</legend>
-      <div class="field">
-        <span class="label">What will you be sending us?</span>
-        <div class="choices">
-          <label class="choice box"><input type="checkbox" name="sample_types" value="Paint chip or swatch"><span>Paint chip or swatch</span></label>
-          <label class="choice box"><input type="checkbox" name="sample_types" value="Painted board or drywall piece"><span>Painted board or drywall piece</span></label>
-          <label class="choice box"><input type="checkbox" name="sample_types" value="Tile, stone, or fabric"><span>Tile, stone, or fabric</span></label>
-          <label class="choice box"><input type="checkbox" name="sample_types" value="Other"><span>Other</span></label>
-        </div>
-        <div class="err">Tell us what you'll be sending.</div>
-        <div class="cond sub" data-show="sample_types:Other">
-          <div class="field">
-            <label for="sample_other">Please describe it</label>
-            <input id="sample_other" name="sample_other" type="text" required>
-            <div class="err">Describe what you're sending.</div>
-          </div>
-        </div>
+    <!-- sample: new only -->
+    <section class="step" data-step="sample_types" data-if="purpose=new">
+      <p class="q">What will you be sending us?</p>
+      <p class="help">Pick all that apply.</p>
+      <div class="choices">
+        <label class="choice box"><input type="checkbox" name="sample_types" value="Paint chip or swatch"><span>Paint chip or swatch</span></label>
+        <label class="choice box"><input type="checkbox" name="sample_types" value="Painted board or drywall piece"><span>Painted board or drywall piece</span></label>
+        <label class="choice box"><input type="checkbox" name="sample_types" value="Tile, stone, or fabric"><span>Tile, stone, or fabric</span></label>
+        <label class="choice box"><input type="checkbox" name="sample_types" value="Other"><span>Other</span></label>
       </div>
-      <div class="field">
-        <label for="paint_ref">If it's a paint color: brand, name, and code <span class="optional">(optional)</span></label>
-        <input id="paint_ref" name="paint_reference" type="text" placeholder="e.g. Sherwin-Williams Agreeable Gray SW 7029">
+      <div class="sub" id="sampleOtherWrap">
+        <label class="lbl" for="sample_other">Please describe it</label>
+        <input id="sample_other" name="sample_other" type="text">
       </div>
-    </fieldset>
+      <div class="err">Tell us what you'll be sending.</div>
+    </section>
 
-    <fieldset class="cond" data-show="purpose:new,reorder">
-      <legend>Anything else?</legend>
-      <div class="field">
-        <label for="notes">Notes <span class="optional">(optional)</span></label>
-        <textarea id="notes" name="notes" placeholder="Where it's going, the look you're after, anything that helps us get it right."></textarea>
-      </div>
-      <div class="actions">
-        <button class="primary" type="submit" id="submitBtn">Send my request</button>
-        <div class="form-error" id="formError">Something didn't go through. Check the highlighted fields and try again.</div>
-      </div>
-    </fieldset>
+    <section class="step" data-step="paint_reference" data-if="purpose=new">
+      <p class="q">Is it a paint color?</p>
+      <p class="help">If so, the brand, name, and code help us get closer faster. Optional.</p>
+      <input id="paint_ref" name="paint_reference" type="text" placeholder="e.g. Sherwin-Williams Agreeable Gray SW 7029">
+    </section>
+
+    <!-- notes -->
+    <section class="step" data-step="notes">
+      <p class="q">Anything else we should know?</p>
+      <p class="help">Where it's going, the look you're after, anything that helps us get it right. Optional.</p>
+      <textarea id="notes" name="notes"></textarea>
+      <div class="form-error" id="formError"></div>
+    </section>
+
+    <div class="nav">
+      <button type="button" class="btn ghost" id="backBtn">Back</button>
+      <button type="button" class="btn primary" id="nextBtn">Continue</button>
+    </div>
+    <p class="hint" id="hint">Press Enter to continue</p>
   </form>
 
-  <!-- Thank you: new match -->
-  <section id="done">
+  <!-- Thank you -->
+  <section id="done" class="stage">
     <div class="ticket" id="ticketNew">
       <div class="ticket-top">
         <p class="eyebrow">Your custom formula number</p>
@@ -480,9 +385,7 @@
       <div class="ticket-body">
         <p class="important"><strong>Important:</strong> write this number on the back of your physical sample before you mail it.</p>
         <p>Without it we can't connect your sample to this request, and your match will be delayed.</p>
-        <div class="addr" id="shipTo">Firmolux Color Lab
-[WAREHOUSE STREET ADDRESS]
-Palmetto, FL [ZIP]</div>
+        <div class="addr" id="shipTo">[WAREHOUSE STREET ADDRESS]</div>
         <p><span class="keep">Screenshot this page or write the number down now.</span> If you lose it, email info@firmolux.com with your name and we'll look it up. Once your color is matched, this is the number you'll use to reorder it anytime, no sample needed.</p>
       </div>
     </div>
@@ -504,120 +407,166 @@ Palmetto, FL [ZIP]</div>
 <script>
 (function () {
   const form = document.getElementById('cm');
-  const conds = Array.from(document.querySelectorAll('.cond'));
+  const steps = Array.from(form.querySelectorAll('.step'));
+  const backBtn = document.getElementById('backBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const hint = document.getElementById('hint');
+  const bar = document.getElementById('bar');
+  let idx = 0;
 
-  // ---- Conditional logic ----
-  // data-show="name:val1,val2" shows when field `name` has any of those values.
-  // "|" separates alternative rules (OR). All comparisons are on current form values.
-  function values(name) {
-    return Array.from(form.querySelectorAll('[name="' + name + '"]'))
-      .filter(el => el.type === 'radio' || el.type === 'checkbox' ? el.checked : true)
-      .map(el => el.value);
+  // ---- Answers ----
+  function val(name) {
+    const els = Array.from(form.querySelectorAll('[name="' + name + '"]'));
+    if (!els.length) return [];
+    if (els[0].type === 'radio' || els[0].type === 'checkbox') return els.filter(e => e.checked).map(e => e.value);
+    return els.map(e => e.value.trim()).filter(Boolean);
   }
-  function ruleMatches(rule) {
-    const [name, list] = rule.split(':');
-    const wanted = list.split(',');
-    return values(name).some(v => wanted.includes(v));
+  // data-if="a=x|b=y" : any rule true → step applies
+  function applies(step) {
+    const rule = step.dataset.if;
+    if (!rule) return true;
+    return rule.split('|').some(r => { const [n, v] = r.split('='); return val(n).includes(v); });
   }
-  function refresh() {
-    conds.forEach(el => {
-      const rules = el.dataset.show.split('|');
-      const on = rules.some(ruleMatches);
-      const parentOff = el.parentElement.closest('.cond') && !el.parentElement.closest('.cond').classList.contains('on');
-      el.classList.toggle('on', on && !parentOff);
-    });
-    // second pass so nested sections settle
-    conds.forEach(el => {
-      const parent = el.parentElement.closest('.cond');
-      if (parent && !parent.classList.contains('on')) el.classList.remove('on');
-    });
-  }
-  form.addEventListener('change', refresh);
-  refresh();
+  function activeSteps() { return steps.filter(applies); }
 
-  // ---- Validation: only visible required fields count ----
-  function visible(el) { return !el.closest('.cond') || !el.closest('.cond:not(.on)'); }
-  function validate() {
-    let ok = true, firstBad = null;
-    form.querySelectorAll('.invalid').forEach(f => f.classList.remove('invalid'));
+  // ---- Validation per step ----
+  const validators = {
+    purpose: () => val('purpose').length > 0,
+    name: () => val('first_name').length && val('last_name').length,
+    email: () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.value.trim()),
+    has_order: () => val('has_order').length > 0,
+    returning: () => val('returning').length > 0,
+    phone: () => val('phone').length > 0,
+    address: () => val('address1').length && val('city').length && val('state').length && val('zip').length,
+    products: () => val('products').length > 0,
+    qty_mode: () => val('qty_mode').length > 0,
+    quantity: () => { const rows = document.querySelectorAll('#qtyRows .qty-row'); if (!rows.length) return true; return Array.from(rows).every(r => r.querySelector('.size').value) && buildQuantity(); },
+    sqft: () => val('sqft').length > 0,
+    primer: () => val('primer').length > 0,
+    sample_types: () => val('sample_types').length > 0 && (!val('sample_types').includes('Other') || val('sample_other').length > 0),
+  };
+  function valid(step) { const v = validators[step.dataset.step]; return v ? !!v() : true; }
 
-    // required text-ish inputs
-    form.querySelectorAll('input[required], textarea[required]').forEach(el => {
-      if (!visible(el)) return;
-      if (el.type === 'radio') return; // handled below
-      let bad = !el.value.trim();
-      if (!bad && el.type === 'email') bad = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(el.value);
-      if (bad) { mark(el.closest('.field')); }
+  // ---- Quantity rows (sizes match the store) ----
+  const SIZES_4 = ['1 Quart (1kg)', '1 Gallon (4kg)', '2 Gallons (8kg)', '3 Gallons (12kg)', '5 Gallons (20kg)'];
+  const SIZES_5 = ['1 Quart (1kg)', '1 Gallon (5kg)', '2 Gallons (10kg)', '3 Gallons (15kg)', '5 Gallons (25kg)'];
+  const SIZE_FOR = { 'Grassello': SIZES_4, 'Milano Silver': SIZES_4, 'Milano Gold': SIZES_4, 'Berlina': SIZES_5, 'Piatto': SIZES_5, 'Mezzo': SIZES_5 };
+  const LABEL_FOR = { 'Berlina': 'Marmorino Berlina' };
+  function renderQtyRows() {
+    const wrap = document.getElementById('qtyRows');
+    const chosen = val('products').filter(p => SIZE_FOR[p]);
+    const keep = {};
+    wrap.querySelectorAll('.qty-row').forEach(r => { keep[r.dataset.product] = { size: r.querySelector('.size').value, count: r.querySelector('.count').value }; });
+    wrap.innerHTML = '';
+    chosen.forEach(p => {
+      const prev = keep[p] || {};
+      const row = document.createElement('div');
+      row.className = 'qty-row'; row.dataset.product = p;
+      row.innerHTML = '<div><label class="lbl">' + (LABEL_FOR[p] || p) + '</label><select class="size"><option value="">Choose a size</option>' +
+        SIZE_FOR[p].map(sz => '<option' + (prev.size === sz ? ' selected' : '') + '>' + sz + '</option>').join('') +
+        '</select></div><div><label class="lbl">How many</label><input class="count" type="number" min="1" max="50" inputmode="numeric" value="' + (prev.count || 1) + '"></div>';
+      wrap.appendChild(row);
     });
-    // required radio groups
-    const groups = new Set();
-    form.querySelectorAll('input[type=radio][required]').forEach(el => groups.add(el.name));
-    groups.forEach(name => {
-      const first = form.querySelector('[name="' + name + '"]');
-      if (!visible(first)) return;
-      if (!values(name).length) mark(first.closest('.field'));
-    });
-    // checkbox groups that need at least one
-    ['products', 'sample_types'].forEach(name => {
-      const first = form.querySelector('[name="' + name + '"]');
-      if (first && visible(first) && !values(name).length) mark(first.closest('.field'));
-    });
-
-    function mark(field) { field.classList.add('invalid'); ok = false; if (!firstBad) firstBad = field; }
-    if (firstBad) firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return ok;
+    if (!chosen.length) wrap.innerHTML = '<p class="help">Tell us the products first, or choose "Not sure" and we\'ll help you size it.</p>';
   }
+  function buildQuantity() {
+    const parts = [];
+    document.querySelectorAll('#qtyRows .qty-row').forEach(r => {
+      const sz = r.querySelector('.size').value, n = r.querySelector('.count').value || '1';
+      if (sz) parts.push((LABEL_FOR[r.dataset.product] || r.dataset.product) + ': ' + n + ' x ' + sz);
+    });
+    document.getElementById('qty').value = parts.join('; ');
+    return parts.length > 0;
+  }
+
+  // ---- Render ----
+  function show(i) {
+    const list = activeSteps();
+    idx = Math.max(0, Math.min(i, list.length - 1));
+    steps.forEach(s => { s.classList.remove('on'); s.classList.remove('invalid'); });
+    const cur = list[idx];
+    cur.classList.add('on');
+    if (cur.dataset.step === 'quantity') renderQtyRows();
+    backBtn.style.visibility = idx === 0 ? 'hidden' : 'visible';
+    const last = idx === list.length - 1;
+    nextBtn.textContent = last ? 'Send my request' : 'Continue';
+    const isRadio = !!cur.querySelector('input[type=radio]');
+    nextBtn.style.display = isRadio ? 'none' : '';
+    hint.textContent = isRadio ? 'Tap an answer to continue' : (last ? '' : 'Press Enter to continue');
+    bar.style.width = Math.round(((idx + 1) / list.length) * 100) + '%';
+    const first = cur.querySelector('input[type=text], input[type=email], input[type=tel], input[type=number], textarea');
+    if (first && window.matchMedia('(min-width: 700px)').matches) setTimeout(() => first.focus(), 60);
+    window.scrollTo({ top: 0 });
+  }
+  function next() {
+    const list = activeSteps();
+    const cur = list[idx];
+    if (!valid(cur)) { cur.classList.add('invalid'); return; }
+    if (idx === list.length - 1) { submit(); return; }
+    show(idx + 1);
+  }
+  backBtn.addEventListener('click', () => show(idx - 1));
+  nextBtn.addEventListener('click', next);
+
+  // radios auto-advance
+  form.addEventListener('change', (e) => {
+    if (e.target.name === 'sample_types') {
+      document.getElementById('sampleOtherWrap').classList.toggle('on', val('sample_types').includes('Other'));
+    }
+    if (e.target.type === 'radio') setTimeout(next, 180);
+  });
+  // Enter advances single-line inputs
+  form.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); next(); }
+  });
 
   // ---- Submit ----
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    const btn = document.getElementById('submitBtn');
+  async function submit() {
     const formError = document.getElementById('formError');
-    btn.disabled = true; btn.textContent = 'Sending...'; formError.style.display = 'none';
+    nextBtn.disabled = true; nextBtn.textContent = 'Sending...'; formError.style.display = 'none';
 
-    // Collect only visible fields
+    buildQuantity();
     const data = {};
-    new FormData(form).forEach((v, k) => {
-      const el = form.querySelector('[name="' + k + '"]');
-      if (!visible(el)) return;
-      if (data[k] !== undefined) { data[k] = [].concat(data[k], v); } else { data[k] = v; }
+    const active = new Set(activeSteps());
+    steps.forEach(s => {
+      if (!active.has(s)) return;
+      s.querySelectorAll('[name]').forEach(el => {
+        const k = el.name;
+        if (el.type === 'radio') { if (el.checked) data[k] = el.value; return; }
+        if (el.type === 'checkbox') { if (el.checked) (data[k] = data[k] || []).push(el.value); return; }
+        if (k === 'sample_other' && !val('sample_types').includes('Other')) return;
+        const v = el.value.trim(); if (v) data[k] = v;
+      });
     });
-    ['products', 'sample_types'].forEach(k => { if (data[k] && !Array.isArray(data[k])) data[k] = [data[k]]; });
 
     let code;
     try {
-      const res = await fetch('/api/color-match', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
-      });
+      const res = await fetch('/api/color-match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       if (!res.ok) throw new Error('bad status ' + res.status);
       code = (await res.json()).code;
     } catch (err) {
-      // Local preview (file:// or no backend yet): show a sample ticket so the flow can be reviewed.
       if (location.protocol === 'file:' || location.hostname === 'localhost') {
-        code = 'FX-1042';
+        code = 'FX-1042'; // local preview only
       } else {
-        btn.disabled = false; btn.textContent = 'Send my request';
-        formError.textContent = "We couldn't send that. Check your connection and try again, or email us and we'll take it from here.";
+        nextBtn.disabled = false; nextBtn.textContent = 'Send my request';
+        formError.textContent = "We couldn't send that. Check your connection and try again, or email info@firmolux.com and we'll take it from here.";
         formError.style.display = 'block';
         return;
       }
     }
-    showDone(data, code);
-  });
-
-  function showDone(data, code) {
     form.style.display = 'none';
-    const done = document.getElementById('done');
     const isReorder = data.purpose === 'reorder';
     document.getElementById('ticketNew').style.display = isReorder ? 'none' : '';
     document.getElementById('ticketReorder').style.display = isReorder ? '' : 'none';
     document.getElementById('codeOut').textContent = code;
     document.getElementById('codeOutRe').textContent = code;
     document.getElementById('emailOutRe').textContent = data.email;
-    done.style.display = 'block';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('done').style.display = 'block';
+    bar.style.width = '100%';
+    window.scrollTo({ top: 0 });
   }
+
+  show(0);
 })();
 </script>
 </body>
