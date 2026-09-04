@@ -11,6 +11,13 @@ const { initColorMatchSchema, mountColorMatchRoutes } = require('./color-match')
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// APP_MODE=color-match runs a stripped service that only exposes /color-match +
+// /api/color-match (and /img/* for the logo). Anything else (default) mounts the
+// full inventory app. Used to deploy the color-match form as its own Railway
+// service without exposing the dashboard/webhook/auth surface.
+const APP_MODE = process.env.APP_MODE || 'full';
+const COLOR_MATCH_ONLY = APP_MODE === 'color-match';
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
@@ -18,8 +25,16 @@ const pool = new Pool({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, '../public')));
+if (!COLOR_MATCH_ONLY) app.use(cookieParser());
+if (COLOR_MATCH_ONLY) {
+  // Only expose the logo dir, not dashboard.html / login.html.
+  app.use('/img', express.static(path.join(__dirname, '../public/img')));
+} else {
+  app.use(express.static(path.join(__dirname, '../public')));
+}
+
+// Color Match (customer-facing, no auth). Mounted in both modes.
+mountColorMatchRoutes(app, pool);
 
 // ─── Auto-setup DB on boot ────────────────────────────────────────────────────
 async function initDB() {
@@ -29,6 +44,11 @@ async function initDB() {
   // schema; other errors keep the pre-existing log-and-continue behavior.
   let brandMigrationFailure = null;
   try {
+    if (COLOR_MATCH_ONLY) {
+      await initColorMatchSchema(client);
+      console.log('✅ Database ready (color-match mode)');
+      return;
+    }
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
@@ -128,6 +148,9 @@ async function initDB() {
   }
 }
 
+// ─── Full-mode routes (skipped when APP_MODE=color-match) ─────────────────────
+if (!COLOR_MATCH_ONLY) {
+
 // ─── Auth middleware ───────────────────────────────────────────────────────────
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'firmolux2024';
 
@@ -161,9 +184,6 @@ app.post('/logout', async (req, res) => {
   res.clearCookie('session');
   res.redirect('/login');
 });
-
-// ─── Color Match (customer-facing, no auth) ───────────────────────────────────
-mountColorMatchRoutes(app, pool);
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 app.get('/', requireAuth, (req, res) => {
@@ -446,6 +466,8 @@ app.post('/webhook/shipstation',          (req, res) => handleShipmentWebhook(re
 app.post('/webhook/shipstation/firmolux', (req, res) => handleShipmentWebhook(req, res, 'Firmolux', firmoluxCredentials()));
 app.post('/webhook/shipstation/violante', (req, res) => handleShipmentWebhook(req, res, 'VIOLANTE', violanteCredentials()));
 
+} // end if (!COLOR_MATCH_ONLY)
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function fetchShipStationOrder(payload, { apiKey, apiSecret } = {}) {
   console.log('fetchShipStationOrder called, have credentials:', !!(apiKey && apiSecret));
@@ -571,7 +593,8 @@ async function checkAndAlert(pool, productCode) {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 initDB().then(() => {
-  app.listen(PORT, () => console.log(`Firmolux Inventory running on port ${PORT}`));
+  const label = COLOR_MATCH_ONLY ? 'Firmolux Color Match' : 'Firmolux Inventory';
+  app.listen(PORT, () => console.log(`${label} running on port ${PORT} (APP_MODE=${APP_MODE})`));
 }).catch(err => {
   console.error('Failed to init DB:', err);
   process.exit(1);
