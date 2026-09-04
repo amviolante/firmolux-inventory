@@ -165,9 +165,45 @@ async function sendShipmentFetchFailureAlert(webhookUrl, { brand, reason, payloa
   return postSlack(webhookUrl, message);
 }
 
+// chat.postMessage with a bot token. Used for color-match posts because we need
+// the returned `ts` to thread status updates onto the request message later.
+// Incoming webhooks don't return a ts, so this path is bot-token only.
+async function postSlackBotMessage(botToken, channel, message) {
+  if (!botToken || !channel) return { ok: false, error: 'missing_bot_token_or_channel' };
+  const body = JSON.stringify({ channel, ...message });
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'slack.com',
+      path: '/api/chat.postMessage',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': `Bearer ${botToken}`,
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { resolve({ ok: false, error: 'invalid_json', raw: data.slice(0, 500) }); }
+      });
+    });
+    req.on('error', reject);
+    // 5s hard cap so a hung Slack socket can't stall the /api/color-match
+    // response past a reasonable customer-wait window.
+    req.setTimeout(5000, () => {
+      req.destroy(new Error('Slack chat.postMessage timed out after 5000ms'));
+    });
+    req.write(body);
+    req.end();
+  });
+}
+
 module.exports = {
   sendSlackAlert,
   sendSkuParseFailureAlert,
   sendEmptyShipmentAlert,
   sendShipmentFetchFailureAlert,
+  postSlackBotMessage,
 };

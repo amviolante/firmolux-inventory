@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const path = require('path');
 const { parseSKU } = require('./sku-parser');
 const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert } = require('./slack');
+const { initColorMatchSchema, mountColorMatchRoutes } = require('./color-match');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -113,6 +114,8 @@ async function initDB() {
         ('KIT-U', 'MMB', 1);
     `);
 
+    await initColorMatchSchema(client);
+
     console.log('✅ Database ready');
   } catch (err) {
     console.error('DB init error:', err.message);
@@ -158,6 +161,9 @@ app.post('/logout', async (req, res) => {
   res.clearCookie('session');
   res.redirect('/login');
 });
+
+// ─── Color Match (customer-facing, no auth) ───────────────────────────────────
+mountColorMatchRoutes(app, pool);
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 app.get('/', requireAuth, (req, res) => {
