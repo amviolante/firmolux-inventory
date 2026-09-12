@@ -118,7 +118,8 @@ async function initDB() {
         ('IP',  'Piatto', 'kg', 25, 5),
         ('IM',  'Mezzo', 'kg', 25, 5),
         ('BEE', 'Beeswax',        'L',   5, 2),
-        ('SAV', 'Sav',            'kg',  2, 3)
+        ('SAV', 'Sav',            'kg',  2, 3),
+        ('DW',  'Decor Wax',      'L',   5, 2)
       ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name;
     `);
 

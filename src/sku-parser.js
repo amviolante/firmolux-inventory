@@ -24,6 +24,7 @@ const PRODUCT_INFO = {
   'IM': { name: 'Mezzo', quantities: [1, 5, 10, 15, 25, 99] },
   'BEE': { name: 'Beeswax', quantities: [0.5, 1, 2, 5, 99] },
   'SAV': { name: 'Sav', quantities: [1, 2] },
+  'DW': { name: 'Decor Wax', quantities: [1, 2, 5] },
   'KRH': { name: 'Kit', quantities: [1], fixed: true },
   'KIT-T': { name: 'Kit-T', quantities: [1], fixed: true },
   'KIT-U': { name: 'Kit-U', quantities: [1], fixed: true },
@@ -230,6 +231,12 @@ if (require.main === module) {
     // Sav: 1 added, no longer fixed.
     { input: 'SAV1', expect: { productCode: 'SAV', qty: 1 } },
     { input: 'SAV2', expect: { productCode: 'SAV', qty: 2 } },
+    // Decor Wax: 1/2/5 valid; 3 rejected; tint suffix stripped.
+    { input: 'DW1', expect: { productCode: 'DW', qty: 1 } },
+    { input: 'DW2', expect: { productCode: 'DW', qty: 2 } },
+    { input: 'DW5', expect: { productCode: 'DW', qty: 5 } },
+    { input: 'DW3', expect: null },
+    { input: 'DW1-SW7004', expect: { productCode: 'DW', qty: 1 } },
     // Existing 99 → 1 preserved.
     { input: 'GL99', expect: { productCode: 'GL', qty: 1 } },
     { input: 'IP99', expect: { productCode: 'IP', qty: 1 } },
@@ -272,13 +279,18 @@ if (require.main === module) {
     { input: 'GL20',       brand: 'VIOLANTE', expect: { productCode: 'GL',  qty: 20  } },
     // Tint-suffix strip on a shared code via VIOLANTE fallthrough.
     { input: 'GL01-BMOC45', brand: 'VIOLANTE', expect: { productCode: 'GL',  qty: 1  } },
+    // DW: shared code, must parse identically under both brands via VIOLANTE fallthrough.
+    { input: 'DW2',        brand: 'Firmolux', expect: { productCode: 'DW',  qty: 2  } },
+    { input: 'DW2',        brand: 'VIOLANTE', expect: { productCode: 'DW',  qty: 2  } },
   ];
 
   const origLog = console.log;
   console.log = () => {};
   const results = cases.map(c => {
     const got = parseSKU(c.input, c.brand);
-    const ok = got && got.productCode === c.expect.productCode && got.qty === c.expect.qty;
+    const ok = c.expect === null
+      ? got === null
+      : (got && got.productCode === c.expect.productCode && got.qty === c.expect.qty);
     return { ...c, got, ok };
   });
   console.log = origLog;
