@@ -89,6 +89,12 @@ async function initDB() {
         note VARCHAR(200),
         created_at TIMESTAMP DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS receiving_receipt (
+        id SERIAL PRIMARY KEY,
+        pasted_text TEXT NOT NULL,
+        applied JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
 
     // Brand column: existing rows default to 'Firmolux' since that's all we had
@@ -264,6 +270,164 @@ app.post('/api/products/:code/adjust', requireAuth, async (req, res) => {
   });
   await checkAndAlert(pool, upper);
   res.json({ success: true });
+});
+
+// ─── API: Receiving (supplier receipt) ────────────────────────────────────────
+// Plaster names use exact match only — "Marmorino Antico" and "Marmorino Matt"
+// share a first word, and a loose match between them would put buckets in the
+// wrong product. Waxes + Ancorante use a keyword substring because supplier
+// wording varies there and none of the plaster names contain those keywords.
+const RECEIVING_RULES = [
+  { code: 'GL',  kind: 'exact',   pattern: 'grassello lucido' },
+  { code: 'MMB', kind: 'exact',   pattern: 'marmorino antico 300' },
+  { code: 'IP',  kind: 'exact',   pattern: 'marmorino matt 600' },
+  { code: 'IM',  kind: 'exact',   pattern: 'intonachino classico 700' },
+  { code: 'MP',  kind: 'exact',   pattern: 'microprimer' },
+  { code: 'MGM', kind: 'exact',   pattern: 'murano gold' },
+  { code: 'MSM', kind: 'exact',   pattern: 'murano silver' },
+  { code: 'AP',  kind: 'keyword', pattern: 'ancorante' },
+  { code: 'BEE', kind: 'keyword', pattern: 'beeswax' },
+  { code: 'SAV', kind: 'keyword', pattern: 'soapstone' },
+  { code: 'DW',  kind: 'keyword', pattern: 'decorwax' },
+];
+
+function normalizeSupplierName(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Exact rules always win over keyword rules — do NOT collapse the two loops.
+function matchReceivingProduct(supplierName) {
+  const norm = normalizeSupplierName(supplierName);
+  if (!norm) return null;
+  for (const rule of RECEIVING_RULES) {
+    if (rule.kind === 'exact' && norm === rule.pattern) return rule.code;
+  }
+  for (const rule of RECEIVING_RULES) {
+    if (rule.kind === 'keyword' && norm.includes(rule.pattern)) return rule.code;
+  }
+  return null;
+}
+
+function parseReceivingText(rawText) {
+  const lines = String(rawText || '').split(/\r?\n/);
+  const entries = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^\(\s*(\d+)\s*\)\s*(.+)$/);
+    if (!m) {
+      entries.push({ rawLine: line, status: 'unmatched', reason: 'Expected "(N) Product Name"' });
+      continue;
+    }
+    const buckets = parseInt(m[1], 10);
+    const supplierName = m[2].trim();
+    if (!Number.isFinite(buckets) || buckets <= 0) {
+      entries.push({ rawLine: line, supplierName, status: 'unmatched', reason: 'Bucket count must be a positive integer' });
+      continue;
+    }
+    const code = matchReceivingProduct(supplierName);
+    if (!code) {
+      entries.push({ rawLine: line, supplierName, buckets, status: 'unmatched', reason: 'Supplier name did not match any product' });
+      continue;
+    }
+    entries.push({ rawLine: line, supplierName, buckets, code, status: 'matched' });
+  }
+  return entries;
+}
+
+async function buildReceivingPreview(pool, rawText) {
+  const entries = parseReceivingText(rawText);
+  const codes = [...new Set(entries.filter(e => e.status === 'matched').map(e => e.code))];
+  let products = {};
+  if (codes.length > 0) {
+    const { rows } = await pool.query(
+      'SELECT code, name, unit, bucket_size, current_qty FROM products WHERE code = ANY($1)',
+      [codes]
+    );
+    products = Object.fromEntries(rows.map(r => [r.code, r]));
+  }
+  return entries.map(e => {
+    if (e.status !== 'matched') return e;
+    const p = products[e.code];
+    if (!p) return { rawLine: e.rawLine, supplierName: e.supplierName, buckets: e.buckets, status: 'unmatched', reason: `Product ${e.code} not found in DB` };
+    const bucketSize = parseFloat(p.bucket_size);
+    const currentQty = parseFloat(p.current_qty);
+    const deltaQty = e.buckets * bucketSize;
+    return {
+      rawLine: e.rawLine,
+      supplierName: e.supplierName,
+      buckets: e.buckets,
+      status: 'matched',
+      productCode: p.code,
+      productName: p.name,
+      unit: p.unit,
+      bucketSize,
+      currentQty,
+      deltaQty,
+      resultingQty: currentQty + deltaQty,
+    };
+  });
+}
+
+app.post('/api/receiving/parse', requireAuth, async (req, res) => {
+  const { text } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'Empty text' });
+  try {
+    const preview = await buildReceivingPreview(pool, text);
+    res.json({ preview });
+  } catch (err) {
+    console.error('Receiving parse error:', err.message);
+    res.status(500).json({ error: 'Parse failed' });
+  }
+});
+
+// Server re-parses the text on commit rather than trusting a client-supplied
+// plan — this way the applied result is deterministic from the pasted text
+// alone. checkAndAlert is intentionally skipped: receiving only adds stock,
+// so it can move a product out of the low band but never into it.
+app.post('/api/receiving/commit', requireAuth, async (req, res) => {
+  const { text } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'Empty text' });
+  try {
+    const preview = await buildReceivingPreview(pool, text);
+    const matched = preview.filter(e => e.status === 'matched');
+    if (matched.length === 0) return res.status(400).json({ error: 'Nothing to receive — no matched lines' });
+
+    const appliedSummary = matched.map(e => ({ code: e.productCode, buckets: e.buckets, deltaQty: e.deltaQty }));
+    const receiptInsert = await pool.query(
+      'INSERT INTO receiving_receipt (pasted_text, applied) VALUES ($1, $2) RETURNING id',
+      [text, JSON.stringify(appliedSummary)]
+    );
+    const receiptId = receiptInsert.rows[0].id;
+    const source = `Receiving (receipt #${receiptId})`;
+
+    const applied = [];
+    for (const entry of matched) {
+      const { rows } = await pool.query('SELECT current_qty FROM products WHERE code = $1', [entry.productCode]);
+      if (rows.length === 0) continue;
+      const before = parseFloat(rows[0].current_qty) || 0;
+      const after = before + entry.deltaQty;
+      await pool.query(
+        'UPDATE products SET current_qty = $1, updated_at = NOW() WHERE code = $2',
+        [after, entry.productCode]
+      );
+      await recordAudit(pool, {
+        productCode: entry.productCode,
+        changeType: 'receiving',
+        deltaQty: entry.deltaQty,
+        qtyBefore: before,
+        qtyAfter: after,
+        source,
+        note: `${entry.buckets} bucket${entry.buckets === 1 ? '' : 's'} @ ${entry.bucketSize}${entry.unit}`
+      });
+      applied.push({ code: entry.productCode, buckets: entry.buckets, deltaQty: entry.deltaQty, qtyAfter: after });
+    }
+
+    res.json({ success: true, receiptId, applied });
+  } catch (err) {
+    console.error('Receiving commit error:', err.message);
+    res.status(500).json({ error: 'Commit failed' });
+  }
 });
 
 // ─── API: Shipment log ────────────────────────────────────────────────────────

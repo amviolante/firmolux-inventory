@@ -397,10 +397,168 @@
       gap: 6px;
     }
 
+    /* ── Receiving panel ── */
+    .receiving-wrap {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .receiving-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--stone);
+      text-align: left;
+    }
+    .receiving-toggle:hover { color: var(--clay); }
+    .receiving-toggle .chev { color: var(--stone); font-size: 12px; }
+
+    .receiving-body {
+      padding: 8px 20px 20px;
+      border-top: 1px solid var(--border);
+      display: none;
+    }
+    .receiving-wrap.open .receiving-body { display: block; }
+
+    .receiving-hint {
+      font-size: 12px;
+      color: var(--stone);
+      margin: 8px 0 10px;
+    }
+
+    .receiving-textarea {
+      width: 100%;
+      min-height: 130px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      color: var(--dark);
+      background: var(--cream);
+      outline: none;
+      resize: vertical;
+    }
+    .receiving-textarea:focus { border-color: var(--clay); background: white; }
+
+    .receiving-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      padding: 8px 16px;
+      border: 1px solid var(--clay);
+      border-radius: 5px;
+      background: var(--clay);
+      color: white;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary:hover { background: #66493A; border-color: #66493A; }
+    .btn-primary:disabled { background: var(--stone); border-color: var(--stone); cursor: not-allowed; }
+
+    .btn-confirm {
+      padding: 8px 16px;
+      border: 1px solid var(--ok);
+      border-radius: 5px;
+      background: var(--ok);
+      color: white;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-confirm:hover { background: #235233; border-color: #235233; }
+    .btn-confirm:disabled { background: var(--stone); border-color: var(--stone); cursor: not-allowed; }
+
+    .btn-ghost {
+      padding: 8px 14px;
+      border: 1px solid var(--border-dark);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--clay);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-ghost:hover { background: var(--cream); }
+
+    .receiving-status {
+      font-size: 12px;
+      color: var(--stone);
+    }
+    .receiving-status.ok { color: var(--ok); }
+    .receiving-status.err { color: var(--low); }
+
+    .preview-table {
+      margin-top: 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .preview-head {
+      display: grid;
+      grid-template-columns: 1.7fr 0.7fr 0.9fr 1.1fr 1.1fr;
+      gap: 12px;
+      padding: 8px 14px;
+      background: var(--cream);
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--stone);
+    }
+    .preview-row {
+      display: grid;
+      grid-template-columns: 1.7fr 0.7fr 0.9fr 1.1fr 1.1fr;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      align-items: center;
+    }
+    .preview-row:last-child { border-bottom: none; }
+    .preview-row.unmatched {
+      background: var(--low-bg);
+      grid-template-columns: 1.7fr 3.8fr;
+      color: var(--low);
+    }
+    .preview-row .muted { color: var(--stone); font-size: 11px; }
+    .receiving-summary {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--stone);
+    }
+    .receiving-summary strong { color: var(--dark); font-weight: 500; }
+
     @media (max-width: 700px) {
       .table-header, .product-row { grid-template-columns: 1fr 1fr; }
       .th:nth-child(n+3), .cell:nth-child(n+3) { display: none; }
       .summary-bar { grid-template-columns: 1fr; }
+      .preview-head, .preview-row { grid-template-columns: 1fr; }
+      .preview-row.unmatched { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -447,6 +605,26 @@
 
   <div id="lowBanner" class="low-banner">
     ⚠️ <span id="lowBannerText"></span>
+  </div>
+
+  <div class="receiving-wrap" id="receivingWrap">
+    <button class="receiving-toggle" onclick="toggleReceiving()" type="button">
+      <span>Record Supplier Receipt</span>
+      <span class="chev" id="receivingChev">▶</span>
+    </button>
+    <div class="receiving-body">
+      <div class="receiving-hint">
+        One product per line, e.g. <code>(36) Grassello Lucido</code>. The number is bucket count (always full buckets). Paste, hit Parse, review the preview, then Confirm. Nothing is written until you Confirm.
+      </div>
+      <textarea class="receiving-textarea" id="receivingText" placeholder="(36) Grassello Lucido&#10;(12) Marmorino Antico 300&#10;(4) Beeswax"></textarea>
+      <div class="receiving-actions">
+        <button class="btn-primary" type="button" onclick="parseReceiving()">Parse</button>
+        <button class="btn-confirm" type="button" id="receivingConfirmBtn" onclick="confirmReceiving()" disabled>Confirm &amp; Add Stock</button>
+        <button class="btn-ghost" type="button" onclick="clearReceiving()">Clear</button>
+        <span class="receiving-status" id="receivingStatus"></span>
+      </div>
+      <div id="receivingPreview"></div>
+    </div>
   </div>
 
   <div class="section-head">
@@ -880,7 +1058,8 @@
   const CHANGE_LABELS = {
     shipment: { label: 'Shipment', color: '#8A6D3B', bg: '#FBF6EC' },
     manual_adjust: { label: 'Manual adjust', color: '#1F6F54', bg: '#EDF7F2' },
-    manual_set: { label: 'Manual set', color: '#2C5C8A', bg: '#EDF3FA' }
+    manual_set: { label: 'Manual set', color: '#2C5C8A', bg: '#EDF3FA' },
+    receiving: { label: 'Receiving', color: '#2D6A42', bg: '#EAF3EC' }
   };
 
   async function loadAudit() {
@@ -934,6 +1113,170 @@
     }
 
     container.innerHTML = html;
+  }
+
+  // ─── Receiving form ──────────────────────────────────────────────────────
+  // Parse and Confirm are two calls. The server re-parses on Confirm so the
+  // committed result is deterministic from the pasted text alone. If the text
+  // in the textarea changes after Parse, the Confirm button is disabled until
+  // Parse is run again — a stale preview must not survive an edit.
+  let lastParsedText = null;
+
+  function toggleReceiving() {
+    const wrap = document.getElementById('receivingWrap');
+    const chev = document.getElementById('receivingChev');
+    wrap.classList.toggle('open');
+    chev.textContent = wrap.classList.contains('open') ? '▼' : '▶';
+  }
+
+  function setReceivingStatus(msg, kind) {
+    const el = document.getElementById('receivingStatus');
+    el.textContent = msg || '';
+    el.className = 'receiving-status' + (kind ? ' ' + kind : '');
+  }
+
+  function clearReceiving() {
+    document.getElementById('receivingText').value = '';
+    document.getElementById('receivingPreview').innerHTML = '';
+    document.getElementById('receivingConfirmBtn').disabled = true;
+    lastParsedText = null;
+    setReceivingStatus('');
+  }
+
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.id === 'receivingText') {
+      if (lastParsedText !== null && e.target.value !== lastParsedText) {
+        document.getElementById('receivingConfirmBtn').disabled = true;
+        setReceivingStatus('Text changed — press Parse again to preview.', '');
+      }
+    }
+  });
+
+  function escapeHTML(s) {
+    return String(s ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+
+  function fmtQty(n) {
+    if (!Number.isFinite(n)) return '—';
+    return n % 1 === 0 ? String(n) : n.toFixed(1);
+  }
+
+  function renderReceivingPreview(preview) {
+    const container = document.getElementById('receivingPreview');
+    if (!preview || preview.length === 0) {
+      container.innerHTML = '<div class="receiving-hint">No lines to preview.</div>';
+      return;
+    }
+    const matched = preview.filter(e => e.status === 'matched');
+    const unmatched = preview.filter(e => e.status !== 'matched');
+
+    let html = '<div class="preview-table">';
+    if (matched.length > 0) {
+      html += `<div class="preview-head">
+        <div>Product</div>
+        <div>Buckets</div>
+        <div>Per bucket</div>
+        <div>Adding</div>
+        <div>Resulting</div>
+      </div>`;
+      for (const e of matched) {
+        html += `<div class="preview-row">
+          <div><strong>${escapeHTML(e.productName)}</strong> <span class="muted">${escapeHTML(e.productCode)}</span></div>
+          <div>${e.buckets}</div>
+          <div>${fmtQty(e.bucketSize)}${escapeHTML(e.unit)}</div>
+          <div><strong>+${fmtQty(e.deltaQty)}</strong> ${escapeHTML(e.unit)}</div>
+          <div>${fmtQty(e.currentQty)} → <strong>${fmtQty(e.resultingQty)}</strong> ${escapeHTML(e.unit)}</div>
+        </div>`;
+      }
+    }
+    for (const e of unmatched) {
+      const raw = e.rawLine || e.supplierName || '(blank)';
+      html += `<div class="preview-row unmatched">
+        <div><strong>Unmatched</strong> — <span class="muted">${escapeHTML(raw)}</span></div>
+        <div>${escapeHTML(e.reason || 'No match')}</div>
+      </div>`;
+    }
+    html += '</div>';
+
+    const totalBuckets = matched.reduce((s, e) => s + e.buckets, 0);
+    html += `<div class="receiving-summary">
+      <strong>${matched.length}</strong> matched line${matched.length === 1 ? '' : 's'} · <strong>${totalBuckets}</strong> bucket${totalBuckets === 1 ? '' : 's'} to add`;
+    if (unmatched.length > 0) {
+      html += ` · <span style="color:var(--low)"><strong>${unmatched.length}</strong> unmatched (ignored)</span>`;
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
+  }
+
+  async function parseReceiving() {
+    const text = document.getElementById('receivingText').value;
+    if (!text.trim()) {
+      setReceivingStatus('Paste at least one line first.', 'err');
+      return;
+    }
+    setReceivingStatus('Parsing…');
+    try {
+      const res = await fetch('/api/receiving/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setReceivingStatus(body.error || 'Parse failed.', 'err');
+        return;
+      }
+      const { preview } = await res.json();
+      renderReceivingPreview(preview);
+      const matchedCount = preview.filter(e => e.status === 'matched').length;
+      lastParsedText = text;
+      document.getElementById('receivingConfirmBtn').disabled = matchedCount === 0;
+      if (matchedCount === 0) {
+        setReceivingStatus('Nothing matched — nothing to add. Fix the text and re-parse.', 'err');
+      } else {
+        setReceivingStatus('Preview ready — review then Confirm.', 'ok');
+      }
+    } catch (err) {
+      setReceivingStatus('Network error while parsing.', 'err');
+    }
+  }
+
+  async function confirmReceiving() {
+    const text = document.getElementById('receivingText').value;
+    if (!text.trim() || text !== lastParsedText) {
+      setReceivingStatus('Press Parse again — the preview does not match the current text.', 'err');
+      return;
+    }
+    const btn = document.getElementById('receivingConfirmBtn');
+    btn.disabled = true;
+    setReceivingStatus('Adding stock…');
+    try {
+      const res = await fetch('/api/receiving/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setReceivingStatus(body.error || 'Commit failed.', 'err');
+        btn.disabled = false;
+        return;
+      }
+      const data = await res.json();
+      const addedLines = (data.applied || []).length;
+      setReceivingStatus(`Added ${addedLines} product${addedLines === 1 ? '' : 's'} — receipt #${data.receiptId}.`, 'ok');
+      document.getElementById('receivingText').value = '';
+      document.getElementById('receivingPreview').innerHTML = '';
+      lastParsedText = null;
+      loadProducts();
+      if (currentTab === 'audit') loadAudit();
+    } catch (err) {
+      setReceivingStatus('Network error while committing.', 'err');
+      btn.disabled = false;
+    }
   }
 
   loadProducts();
