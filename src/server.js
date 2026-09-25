@@ -4,8 +4,8 @@ const { Pool } = require('pg');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const path = require('path');
-const { parseSKU } = require('./sku-parser');
-const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert } = require('./slack');
+const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert, sendDeductionFailureAlert } = require('./slack');
+const { migrateShipmentIds, loadKits, processShipment, shipmentsFromResponse } = require('./shipments');
 const { initColorMatchSchema, mountColorMatchRoutes } = require('./color-match');
 
 const app = express();
@@ -108,6 +108,16 @@ async function initDB() {
         ALTER TABLE shipment_log    ADD COLUMN IF NOT EXISTS brand VARCHAR(20) DEFAULT 'Firmolux';
         ALTER TABLE inventory_audit ADD COLUMN IF NOT EXISTS brand VARCHAR(20) DEFAULT 'Firmolux';
       `);
+    } catch (err) {
+      brandMigrationFailure = err;
+      throw err;
+    }
+
+    // shipment_id on inventory_audit: the idempotency key for deductions.
+    // Same must-succeed rule as the brand column — without it every webhook
+    // would fail its duplicate check.
+    try {
+      await migrateShipmentIds(client);
     } catch (err) {
       brandMigrationFailure = err;
       throw err;
@@ -451,166 +461,85 @@ app.get('/api/audit', requireAuth, async (req, res) => {
 });
 
 // ─── WEBHOOK: ShipStation ─────────────────────────────────────────────────────
+// Always answers 200 once the request is read: a non-200 makes ShipStation
+// retry, and retries were the main source of double deductions. Failures go
+// to Slack instead. Each shipment in the batch is deducted in its own
+// transaction keyed on shipmentId (see src/shipments.js), so a retry or a
+// relabel notification for an already-deducted shipment is skipped, and a
+// shipment that fails part-way leaves nothing behind for reconcile to find.
 async function handleShipmentWebhook(req, res, brand, credentials) {
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  const payload = req.body;
+  const slack = async (label, fn) => {
+    if (!webhookUrl) return;
+    try { await fn(); } catch (err) { console.error(`Slack ${label} alert failed:`, err.message); }
+  };
   try {
-    // Auth check removed — URL privacy is sufficient
-
-    const payload = req.body;
     console.log(`[${brand}] ShipStation webhook received:`, JSON.stringify(payload).slice(0, 300));
 
-    const orderData = await fetchShipStationOrder(payload, credentials);
-    if (!orderData) {
-      // Missing creds OR ShipStation returned nothing → silent under-deduction
-      // if we just return. Fire an alert but still 200 so ShipStation doesn't
-      // retry-storm on a broken endpoint. Same try/catch discipline as the
-      // other alerts — Slack failure MUST NOT propagate.
-      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-      if (webhookUrl) {
-        const reason = (!credentials || !credentials.apiKey || !credentials.apiSecret)
-          ? 'ShipStation credentials missing for this route'
+    let shipments = null;
+    let fetchError = null;
+    try {
+      shipments = await fetchShipStationShipments(payload, credentials);
+    } catch (err) {
+      fetchError = err.message;
+    }
+    if (!shipments || shipments.length === 0) {
+      const reason = (!credentials || !credentials.apiKey || !credentials.apiSecret)
+        ? 'ShipStation credentials missing for this route'
+        : fetchError
+          ? `ShipStation fetch failed: ${fetchError}`
           : 'Could not resolve shipment data (missing resource_url or empty ShipStation response)';
-        console.log(`🚫 [${brand}] Shipment fetch failure: ${reason}`);
-        try {
-          await sendShipmentFetchFailureAlert(webhookUrl, {
-            brand,
-            reason,
-            payloadSummary: JSON.stringify(payload).slice(0, 500),
-          });
-        } catch (err) {
-          console.error(`Slack fetch-failure alert failed for ${brand}:`, err.message);
-        }
-      }
-      return res.status(200).json({ message: 'No order data to process' });
+      console.log(`🚫 [${brand}] Shipment fetch failure: ${reason}`);
+      await slack('fetch-failure', () => sendShipmentFetchFailureAlert(webhookUrl, {
+        brand, reason, payloadSummary: JSON.stringify(payload).slice(0, 500),
+      }));
+      return res.status(200).json({ message: 'No shipment data to process' });
     }
 
-    const orderTag = orderData.orderNumber
-      ? `Order #${orderData.orderNumber}`
-      : (orderData.orderId ? `Order #${orderData.orderId}` : 'Order (unknown)');
-    const orderLabel = orderData.orderNumber || orderData.orderId || null;
+    const kits = await loadKits(pool);
+    const results = [];
+    for (const shipment of shipments) {
+      const orderLabel = shipment.orderNumber || shipment.orderId || null;
+      console.log(`[${brand}] Shipment ${shipment.shipmentId} (order ${orderLabel}): ${shipment.items.length} items`);
 
-    const deductions = [];
-    let processedCount = 0;
-
-    console.log('Processing items from order:', orderData.orderId);
-    console.log('Items count:', (orderData.items || []).length);
-
-    // Fetched shipment with zero items → human review, not an error.
-    // Slack failures MUST NOT propagate — the outer catch returns non-200 and
-    // ShipStation would retry, double-deducting anything already processed.
-    if ((orderData.items || []).length === 0) {
-      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-      if (webhookUrl) {
-        console.log(`🔎 Empty shipment alert for ${orderTag}`);
-        try {
-          await sendEmptyShipmentAlert(webhookUrl, { orderNumber: orderLabel });
-        } catch (err) {
-          console.error(`Slack empty-shipment alert failed for ${orderTag}:`, err.message);
-        }
+      if (shipment.items.length === 0) {
+        // Zero items → human review, not an error.
+        await slack('empty-shipment', () => sendEmptyShipmentAlert(webhookUrl, { orderNumber: orderLabel }));
       }
-    }
 
-    for (const item of orderData.items || []) {
-      const sku = item.sku;
-      const orderQty = item.quantity || 1;
-      if (!sku) {
-        console.log('⊘ Skipping item with no SKU');
+      let result;
+      try {
+        result = await processShipment(pool, brand, shipment, { kits });
+      } catch (err) {
+        console.error(`[${brand}] Deduction failed for shipment ${shipment.shipmentId}:`, err);
+        await slack('deduction-failure', () => sendDeductionFailureAlert(webhookUrl, {
+          brand, orderNumber: orderLabel, shipmentId: shipment.shipmentId, error: err.message,
+        }));
+        results.push({ shipmentId: shipment.shipmentId, status: 'failed' });
         continue;
       }
+      console.log(`[${brand}] Shipment ${shipment.shipmentId}: ${result.status}, ${result.deductions.length} deductions`);
+      results.push({ shipmentId: shipment.shipmentId, status: result.status, deductions: result.deductions });
+      if (result.status === 'duplicate') continue;
 
-      console.log(`→ Processing: SKU="${sku}", qty=${orderQty}`);
-      const skuUpper = sku.split('-')[0].toUpperCase();
-
-      if (skuUpper === 'KRH' || skuUpper === 'KIT-T' || skuUpper === 'KIT-U') {
-        const kitName = skuUpper;
-        console.log(`  → Kit detected: ${kitName}`);
-        const { rows: components } = await pool.query(
-          'SELECT kc.*, p.name, p.unit, p.current_qty, p.bucket_size, p.reorder_buckets FROM kit_components kc JOIN products p ON kc.product_code = p.code WHERE kc.kit_code = $1',
-          [kitName]
-        );
-        for (const comp of components) {
-          const deductQty = comp.qty_per_kit * orderQty;
-          console.log(`    ✓ ${comp.product_code} -${deductQty}`);
-          await deductInventory(pool, comp.product_code, deductQty, {
-            changeType: 'shipment',
-            source: orderTag,
-            note: `${kitName} x${orderQty}`,
-            brand
-          });
-          deductions.push({ product: comp.product_code, qty: deductQty, reason: `${kitName} x${orderQty}` });
-          await checkAndAlert(pool, comp.product_code);
-        }
-        processedCount++;
-        continue;
+      if (result.failed.length > 0) {
+        console.log(`⚠️ Unparseable SKU alert for order ${orderLabel}: ${result.failed.join(' | ')}`);
+        await slack('parse-failure', () => sendSkuParseFailureAlert(webhookUrl, {
+          orderNumber: orderLabel, brand, unparseableSkus: result.failed,
+        }));
       }
-
-      const parsed = parseSKU(sku, brand);
-      if (!parsed) {
-        console.log(`  ❌ Could not parse SKU`);
-        continue;
-      }
-
-      const totalDeduct = parsed.qty * orderQty;
-      console.log(`  ✓ ${parsed.productCode} -${totalDeduct}kg`);
-      await deductInventory(pool, parsed.productCode, totalDeduct, {
-        changeType: 'shipment',
-        source: orderTag,
-        note: `${sku} x${orderQty}`,
-        brand
-      });
-      deductions.push({ product: parsed.productCode, qty: totalDeduct, sku, orderQty });
-      await checkAndAlert(pool, parsed.productCode);
-      processedCount++;
-    }
-
-    console.log(`Processed ${processedCount} items, ${deductions.length} deductions recorded`);
-
-    // Capture any SKUs that failed to parse (for visibility in the log)
-    const failedSkuList = (orderData.items || [])
-      .filter(item => item.sku && item.sku.split('-')[0].toUpperCase() !== 'KRH'
-                      && item.sku.split('-')[0].toUpperCase() !== 'KIT-T'
-                      && item.sku.split('-')[0].toUpperCase() !== 'KIT-U'
-                      && !parseSKU(item.sku, brand))
-      .map(item => item.sku);
-    const failedSkus = failedSkuList.join(' | ');
-
-    // Any parse failure → Slack alert with order + raw SKU strings.
-    // Slack failures MUST NOT propagate — see empty-shipment alert above.
-    if (failedSkuList.length > 0) {
-      const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-      if (webhookUrl) {
-        console.log(`⚠️ Unparseable SKU alert for ${orderTag}: ${failedSkus}`);
-        try {
-          await sendSkuParseFailureAlert(webhookUrl, {
-            orderNumber: orderLabel,
-            brand,
-            unparseableSkus: failedSkuList
-          });
-        } catch (err) {
-          console.error(`Slack parse-failure alert failed for ${orderTag}:`, err.message);
-        }
+      for (const code of new Set(result.deductions.map(d => d.product))) {
+        await checkAndAlert(pool, code);
       }
     }
-
-    const logData = {
-      deductions,
-      failedSkus: failedSkus || null
-    };
-
-    const displayId = orderData.orderNumber ? `#${orderData.orderNumber}` : (orderData.orderId ? `#${orderData.orderId}` : 'Unknown');
-    const displayName = orderData.customerName ? ` - ${orderData.customerName}` : '';
-    const fullIdentifier = displayId + displayName;
-    
-    await pool.query(
-      'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions, brand) VALUES ($1, $2, $3, $4, $5)',
-      [fullIdentifier, 'BATCH', 1, JSON.stringify(logData), brand]
-    );
-    console.log('✅ Saved to log');
-
-    res.json({ success: true, deductions });
-
+    res.json({ success: true, shipments: results });
   } catch (err) {
     console.error(`[${brand}] Webhook error:`, err);
-    res.status(500).json({ error: 'Internal error' });
+    await slack('deduction-failure', () => sendDeductionFailureAlert(webhookUrl, {
+      brand, orderNumber: null, shipmentId: null, error: err.message,
+    }));
+    res.status(200).json({ success: false, error: 'Internal error (reported to Slack)' });
   }
 }
 
@@ -634,29 +563,29 @@ app.post('/webhook/shipstation/violante', (req, res) => handleShipmentWebhook(re
 } // end if (!COLOR_MATCH_ONLY)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-async function fetchShipStationOrder(payload, { apiKey, apiSecret } = {}) {
-  console.log('fetchShipStationOrder called, have credentials:', !!(apiKey && apiSecret));
+const SHIPSTATION_API_BASE = process.env.SHIPSTATION_API_BASE || 'https://ssapi.shipstation.com';
 
-  if (!apiKey || !apiSecret) {
-    console.log('No API credentials, checking payload for items directly');
-    if (payload.items) return payload;
-    return null;
+// Returns the notification's shipments (one entry each), or null when there
+// is nothing to fetch. Throws on a network / parse error.
+async function fetchShipStationShipments(payload, { apiKey, apiSecret } = {}) {
+  const resourceUrl = payload && payload.resource_url;
+  if (!apiKey || !apiSecret || !resourceUrl) return null;
+
+  // Only ever send the API credentials to ShipStation. The webhook is
+  // unauthenticated, so resource_url is caller-controlled.
+  const url = new URL(resourceUrl);
+  const allowed = new URL(SHIPSTATION_API_BASE);
+  if (url.origin !== allowed.origin) {
+    throw new Error(`resource_url host ${url.host} is not ${allowed.host}`);
   }
-
-  const resourceUrl = payload.resource_url;
-  if (!resourceUrl) {
-    if (payload.items) return payload;
-    return null;
-  }
-
   const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64');
-  const https = require('https');
+  const lib = url.protocol === 'http:' ? require('http') : require('https');
 
   return new Promise((resolve, reject) => {
-    const url = new URL(resourceUrl);
     console.log('Fetching from ShipStation:', url.hostname + url.pathname);
-    https.get({
+    const req = lib.get({
       hostname: url.hostname,
+      port: url.port || undefined,
       path: url.pathname + url.search,
       headers: { 'Authorization': `Basic ${auth}` }
     }, res => {
@@ -664,57 +593,13 @@ async function fetchShipStationOrder(payload, { apiKey, apiSecret } = {}) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          console.log('Parsed response:', JSON.stringify(parsed).slice(0, 200));
-          if (parsed.shipments && parsed.shipments.length > 0) {
-            const shipment = parsed.shipments[0];
-            const orderId = shipment.orderId;
-            const orderNumber = shipment.orderNumber;
-            const customerName = shipment.customerName;
-            const items = parsed.shipments.flatMap(s => s.shipmentItems || []);
-            console.log('=== ShipStation Shipment Object ===');
-            console.log('Available fields:', Object.keys(shipment).join(', '));
-            console.log('orderId:', orderId);
-            console.log('orderNumber:', orderNumber);
-            console.log('customerName:', customerName);
-            console.log('customerEmail:', shipment.customerEmail);
-            console.log('Found', items.length, 'items');
-            resolve({ orderId, orderNumber, customerName, items });
-          } else if (parsed.items) {
-            console.log('Found', parsed.items.length, 'items directly');
-            resolve(parsed);
-          } else {
-            console.log('No items found in response');
-            resolve(null);
-          }
-        } catch (e) { console.error('Parse error:', e.message); reject(e); }
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+        try { resolve(shipmentsFromResponse(JSON.parse(data))); }
+        catch (e) { reject(e); }
       });
-    }).on('error', err => {
-      console.error('ShipStation fetch error:', err.message);
-      reject(err);
     });
-  });
-}
-
-async function deductInventory(pool, productCode, qty, opts = {}) {
-  const { rows } = await pool.query('SELECT current_qty FROM products WHERE code = $1', [productCode]);
-  if (rows.length === 0) return;
-  const before = parseFloat(rows[0].current_qty) || 0;
-  const after = before - qty;
-  await pool.query(
-    'UPDATE products SET current_qty = $1, updated_at = NOW() WHERE code = $2',
-    [after, productCode]
-  );
-  await recordAudit(pool, {
-    productCode,
-    changeType: opts.changeType || 'shipment',
-    deltaQty: -qty,
-    qtyBefore: before,
-    qtyAfter: after,
-    source: opts.source || null,
-    note: opts.note || null,
-    brand: opts.brand || null
+    req.on('error', reject);
+    req.setTimeout(15000, () => req.destroy(new Error('ShipStation request timed out after 15000ms')));
   });
 }
 

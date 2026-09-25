@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "setup-db": "node src/setup-db.js"
+    "setup-db": "node src/setup-db.js",
+    "test": "node src/sku-parser.js && node --test"
   },
   "dependencies": {
     "express": "^4.18.2",

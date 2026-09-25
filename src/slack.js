@@ -165,6 +165,30 @@ async function sendShipmentFetchFailureAlert(webhookUrl, { brand, reason, payloa
   return postSlack(webhookUrl, message);
 }
 
+async function sendDeductionFailureAlert(webhookUrl, { brand, orderNumber, shipmentId, error }) {
+  if (!webhookUrl) return;
+  const orderLabel = orderNumber || '(unknown)';
+  const message = {
+    text: `🚫 Deduction failed — ${brand || '(unknown)'} — order ${orderLabel}`,
+    blocks: [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: `🚫 Deduction failed: Order ${orderLabel}` }
+      },
+      {
+        type: 'section',
+        fields: [
+          { type: 'mrkdwn', text: `*Brand:*\n${brand || '(unknown)'}` },
+          { type: 'mrkdwn', text: `*Shipment:*\n${shipmentId || '(unknown)'}` },
+          { type: 'mrkdwn', text: `*Error:*\n${String(error || '(none)').slice(0, 300)}` },
+          { type: 'mrkdwn', text: `*Impact:*\nNothing was deducted for this shipment (rolled back). ShipStation got a 200 and will not retry; the morning reconcile picks it up.` }
+        ]
+      }
+    ]
+  };
+  return postSlack(webhookUrl, message);
+}
+
 // chat.postMessage with a bot token. Used for color-match posts because we need
 // the returned `ts` to thread status updates onto the request message later.
 // Incoming webhooks don't return a ts, so this path is bot-token only.
@@ -205,5 +229,6 @@ module.exports = {
   sendSkuParseFailureAlert,
   sendEmptyShipmentAlert,
   sendShipmentFetchFailureAlert,
+  sendDeductionFailureAlert,
   postSlackBotMessage,
 };
