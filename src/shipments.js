@@ -101,7 +101,13 @@ async function processShipment(pool, brand, shipment, opts = {}) {
     // "shipped with no label" — deducting it would count the order twice.
     if (shipment.orderId && !shipmentId.startsWith('order:')
         && await isProcessed(client, brand, `order:${shipment.orderId}`)) {
-      return { status: 'covered-by-no-label', deductions: [], failed: plan.failed };
+      // Logged so it counts as processed and is flagged once, not daily.
+      await client.query(
+        'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions, brand) VALUES ($1, $2, $3, $4, $5)',
+        [`#${orderLabel}`.slice(0, 50), 'SKIPPED', 1,
+         JSON.stringify({ deductions: [], failedSkus: null, shipmentId, skipped: `order:${shipment.orderId} already deducted as shipped with no label` }), brand]
+      );
+      return { status: 'covered-by-no-label', deductions: [], failed: plan.failed, rollback: !!opts.dryRun };
     }
 
     const applied = [];

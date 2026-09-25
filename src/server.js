@@ -4,8 +4,9 @@ const { Pool } = require('pg');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const path = require('path');
-const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert, sendDeductionFailureAlert } = require('./slack');
+const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert, sendDeductionFailureAlert, buildReconcileMessage } = require('./slack');
 const { migrateShipmentIds, loadKits, processShipment, shipmentsFromResponse } = require('./shipments');
+const { runReconcile, parseStart } = require('./reconcile');
 const { initColorMatchSchema, mountColorMatchRoutes } = require('./color-match');
 
 const app = express();
@@ -458,6 +459,28 @@ app.get('/api/audit', requireAuth, async (req, res) => {
   query += ' ORDER BY a.created_at DESC LIMIT 500';
   const { rows } = await pool.query(query, params);
   res.json(rows);
+});
+
+// ─── API: Reconcile (on demand) ───────────────────────────────────────────────
+// Dry run unless ?apply=1. Applying needs RECONCILE_START (the physical count
+// time, ISO with offset) so nothing before the count is ever deducted.
+app.post('/api/reconcile', requireAuth, async (req, res) => {
+  const apply = req.query.apply === '1';
+  const days = Math.min(Math.max(parseInt(req.query.days || '7', 10) || 7, 1), 30);
+  let start;
+  try {
+    start = parseStart(process.env.RECONCILE_START);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  if (apply && !start) return res.status(400).json({ error: 'RECONCILE_START is not set; only dry runs are allowed' });
+  try {
+    const summary = await runReconcile(pool, { days, start, dryRun: !apply });
+    res.json({ summary, slack: buildReconcileMessage(summary) });
+  } catch (err) {
+    console.error('Reconcile error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── WEBHOOK: ShipStation ─────────────────────────────────────────────────────

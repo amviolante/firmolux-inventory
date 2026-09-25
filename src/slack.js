@@ -189,6 +189,51 @@ async function sendDeductionFailureAlert(webhookUrl, { brand, orderNumber, shipm
   return postSlack(webhookUrl, message);
 }
 
+// Daily reconcile summary. Pure: returns the message, does not send it.
+function buildReconcileMessage(summary) {
+  const units = summary.units || {};
+  const fmtQty = (items, sign = '') => items
+    .map(i => `${i.product} ${sign}${round(i.qty)}${units[i.product] === 'L' ? ' L' : ' kg'}`).join(', ');
+  const fmtTotals = (totals, sign = '') => fmtQty(Object.entries(totals || {})
+    .sort((a, b) => b[1] - a[1]).map(([product, qty]) => ({ product, qty })), sign) || '—';
+  const who = r => `${r.brand} #${r.orderNumber}`;
+  const label = r => (r.shipmentId || '').startsWith('order:') ? 'no label, marked shipped' : `label ${r.shipmentId}`;
+  const list = (rows, line, max = 15) => {
+    const out = rows.slice(0, max).map(r => `• ${line(r)}`);
+    if (rows.length > max) out.push(`• …and ${rows.length - max} more (see /api/reconcile)`);
+    return out.join('\n');
+  };
+
+  const day = new Date(summary.ranAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+  const dry = summary.dryRun ? ' (DRY RUN, nothing changed)' : '';
+  const nothing = !summary.reconciled.length && !summary.reversed.length && !summary.unparsed.length
+    && !summary.zeroItems.length && !summary.review.length && !summary.errors.length;
+  const title = nothing
+    ? `✅ Inventory reconcile ${day}: nothing missed in the last ${summary.days} days${dry}`
+    : `🔄 Inventory reconcile ${day}: ${summary.orderCount} order${summary.orderCount === 1 ? '' : 's'} reconciled, ${summary.reversed.length} voided label${summary.reversed.length === 1 ? '' : 's'} reversed${dry}`;
+  const blocks = [{ type: 'section', text: { type: 'mrkdwn', text: `*${title}*` } }];
+  if (nothing) return { text: title, blocks };
+
+  const section = (heading, body) => { if (body) blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*${heading}*\n${body}` } }); };
+  section('Totals', [
+    `Deducted: ${fmtTotals(summary.totals.deducted)}`,
+    summary.reversed.length ? `Put back (voided labels): ${fmtTotals(summary.totals.reversed, '+')}` : null,
+  ].filter(Boolean).join('\n'));
+  section('Deducted now (webhook missed these)', list(summary.reconciled, r => `${who(r)}, ${label(r)}: ${fmtQty(r.items)}`));
+  section('Voided labels put back', list(summary.reversed, r => `${who(r)}, label ${r.shipmentId}: ${fmtQty(r.items, '+')}`));
+  section('Could not parse, adjust by hand', list(summary.unparsed, r => `${who(r)}, ${label(r)}: ${r.skus.map(s => `\`${s}\``).join(', ')}`));
+  section('Shipments with no line items, check contents', list(summary.zeroItems, r => `${who(r)}, ${label(r)}`));
+  section('Needs review', list(summary.review, r => `${who(r)}, ${label(r)}: ${r.reason}`));
+  section('Errors, reconcile incomplete', list(summary.errors, r => `${r.orderNumber ? who(r) : r.brand}: ${r.error}`));
+  return { text: title, blocks };
+}
+function round(n) { return Math.round(n * 100) / 100; }
+
+async function sendReconcileSummary(webhookUrl, summary) {
+  if (!webhookUrl) return;
+  return postSlack(webhookUrl, buildReconcileMessage(summary));
+}
+
 // chat.postMessage with a bot token. Used for color-match posts because we need
 // the returned `ts` to thread status updates onto the request message later.
 // Incoming webhooks don't return a ts, so this path is bot-token only.
@@ -230,5 +275,7 @@ module.exports = {
   sendEmptyShipmentAlert,
   sendShipmentFetchFailureAlert,
   sendDeductionFailureAlert,
+  buildReconcileMessage,
+  sendReconcileSummary,
   postSlackBotMessage,
 };
