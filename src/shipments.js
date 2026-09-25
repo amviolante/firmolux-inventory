@@ -10,9 +10,7 @@
 // shipment (product updates, audit rows, shipment_log row) commits or rolls
 // back together, so a failure part-way leaves nothing behind for the
 // reconcile job to trip over — it simply deducts the shipment next morning.
-const { parseSKU } = require('./sku-parser');
-
-const KIT_CODES = ['KRH', 'KIT-T', 'KIT-U'];
+const { parseSKU, kitCode } = require('./sku-parser');
 
 async function migrateShipmentIds(client) {
   await client.query(`
@@ -29,19 +27,18 @@ async function loadKits(db) {
   return kits;
 }
 
-function kitCodeFor(sku) {
-  const head = sku.split('-')[0].toUpperCase();
-  return KIT_CODES.includes(head) ? head : null;
-}
-
-// Pure: what a shipment's items should deduct.
+// Pure: what a shipment's items should deduct. Nothing is skipped silently:
+// an item with no SKU is reported in `failed` by name.
 function planShipment(items, brand, kits) {
   const deductions = [];
   const failed = [];
   for (const item of items || []) {
     const orderQty = item.quantity || 1;
-    if (!item.sku) continue;
-    const kit = kitCodeFor(item.sku);
+    if (!item.sku) {
+      failed.push(`(no SKU) ${item.name || 'unnamed item'} x${orderQty}`);
+      continue;
+    }
+    const kit = kitCode(item.sku);
     if (kit) {
       for (const c of kits[kit] || []) {
         deductions.push({ product: c.product, qty: c.qty * orderQty, reason: `${kit} x${orderQty}`, note: `${kit} x${orderQty}` });
@@ -195,7 +192,6 @@ function shipmentsFromResponse(parsed) {
 }
 
 module.exports = {
-  KIT_CODES,
   migrateShipmentIds,
   loadKits,
   planShipment,

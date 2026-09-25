@@ -35,12 +35,36 @@ const CODE_ALIASES = {
   'MG': 'MGM',
 };
 
-// Typo SKUs in Shopify that can't be edited. Keyed on the SKU after the tint
-// suffix and any trailing KG are stripped. MMB20 is a typo — 20 is not
-// otherwise a valid Berlina quantity, and it should route to Berlina 25kg.
+// Typo SKUs that can't be edited (Shopify, and Amazon listings that would
+// have to be deleted). Keyed on the SKU after the tint suffix and any
+// trailing KG are stripped. Berlina comes in 1/5/10/15/25 kg; these Berlina
+// SKUs carry the Grassello sizes by mistake and map to the real bucket:
+// 04 → 5, 08 → 10, 12 → 15, 20 → 25 (owner-confirmed 2026-09-25).
 const SKU_OVERRIDES = {
+  'MMB04': { productCode: 'MMB', qty: 5 },
+  'MMB4':  { productCode: 'MMB', qty: 5 },
+  'MMB08': { productCode: 'MMB', qty: 10 },
+  'MMB8':  { productCode: 'MMB', qty: 10 },
+  'MMB12': { productCode: 'MMB', qty: 15 },
   'MMB20': { productCode: 'MMB', qty: 25 },
 };
+
+// SKUs that are just the product name, no size. Bare "Sav" is the 2 kg tub
+// (what it deducted before SAV became a sized product on 2026-08-28).
+const BARE_NAME_SKUS = {
+  'SAV': { productCode: 'SAV', qty: 2 },
+};
+
+// Kit SKUs, matched case-insensitively with the hyphen kept: "KIT-T",
+// "Kit-U", "kit-u-anything". KRH may carry a suffix after a hyphen.
+function kitCode(rawSku) {
+  if (!rawSku || typeof rawSku !== 'string') return null;
+  const upper = rawSku.trim().toUpperCase();
+  const m = /^KIT-([TU])(?:$|-)/.exec(upper);
+  if (m) return `KIT-${m[1]}`;
+  if (upper.split('-')[0] === 'KRH') return 'KRH';
+  return null;
+}
 
 // Name → code (Firmolux Amazon format only — VIOLANTE ships code+suffix on
 // both channels, so it never touches this table).
@@ -98,6 +122,12 @@ function parseFirmoluxSKU(sku) {
   if (SKU_OVERRIDES[overrideKey]) {
     const hit = SKU_OVERRIDES[overrideKey];
     console.log(`[SKU] ✓ (Override) ${overrideKey} → ${hit.productCode} qty=${hit.qty}`);
+    return { productCode: hit.productCode, qty: hit.qty };
+  }
+
+  if (BARE_NAME_SKUS[upperSku]) {
+    const hit = BARE_NAME_SKUS[upperSku];
+    console.log(`[SKU] ✓ (Bare name) ${upperSku} → ${hit.productCode} qty=${hit.qty}`);
     return { productCode: hit.productCode, qty: hit.qty };
   }
 
@@ -211,7 +241,7 @@ function parseViolanteSKU(sku) {
   return parseFirmoluxSKU(sku);
 }
 
-module.exports = { parseSKU, PRODUCT_INFO };
+module.exports = { parseSKU, kitCode, PRODUCT_INFO };
 
 // Inline tests — run with `node src/sku-parser.js`.
 if (require.main === module) {
@@ -220,6 +250,20 @@ if (require.main === module) {
     { input: 'MMB20', expect: { productCode: 'MMB', qty: 25 } },
     { input: 'MMB20KG', expect: { productCode: 'MMB', qty: 25 } },
     { input: 'MMB20-SW7008', expect: { productCode: 'MMB', qty: 25 } },
+    // Amazon Berlina typos → real bucket sizes.
+    { input: 'MMB04-Natural', expect: { productCode: 'MMB', qty: 5 } },
+    { input: 'MMB08-Natural', expect: { productCode: 'MMB', qty: 10 } },
+    { input: 'MMB12', expect: { productCode: 'MMB', qty: 15 } },
+    { input: 'MMB12KG-SW7008', expect: { productCode: 'MMB', qty: 15 } },
+    { input: 'MMB08', brand: 'VIOLANTE', expect: { productCode: 'MMB', qty: 10 } },
+    // Real Berlina sizes unchanged.
+    { input: 'MMB05', expect: { productCode: 'MMB', qty: 5 } },
+    { input: 'MMB10', expect: { productCode: 'MMB', qty: 10 } },
+    { input: 'MMB15', expect: { productCode: 'MMB', qty: 15 } },
+    // Bare "Sav" = 2 kg; sized SAV unchanged.
+    { input: 'Sav', expect: { productCode: 'SAV', qty: 2 } },
+    { input: 'SAV', expect: { productCode: 'SAV', qty: 2 } },
+    { input: 'Sav', brand: 'VIOLANTE', expect: { productCode: 'SAV', qty: 2 } },
     // MG alias + widened quantity regex. MGM must still win over MG.
     { input: 'MGM20', expect: { productCode: 'MGM', qty: 20 } },
     { input: 'MGM08', expect: { productCode: 'MGM', qty: 8 } },
@@ -295,15 +339,25 @@ if (require.main === module) {
   });
   console.log = origLog;
 
+  const kitCases = [
+    ['KIT-T', 'KIT-T'], ['Kit-U', 'KIT-U'], ['KIT-U', 'KIT-U'], ['kit-t', 'KIT-T'], [' Kit-U ', 'KIT-U'],
+    ['KIT-U-SW7008', 'KIT-U'], ['KRH', 'KRH'], ['KRH-SW7008', 'KRH'],
+    ['KIT', null], ['KIT-X', null], ['KITT', null], ['GL04', null], ['', null],
+  ];
+  for (const [input, want] of kitCases) {
+    const got = kitCode(input);
+    results.push({ input: `kitCode(${JSON.stringify(input)})`, expect: want, got, ok: got === want });
+  }
+
   const failed = results.filter(r => !r.ok);
   for (const r of failed) {
     const label = r.brand ? `${r.input} [${r.brand}]` : r.input;
     console.error(`FAIL ${label}: expected ${JSON.stringify(r.expect)}, got ${JSON.stringify(r.got)}`);
   }
   if (failed.length) {
-    console.error(`${failed.length} of ${cases.length} tests failed`);
+    console.error(`${failed.length} of ${results.length} tests failed`);
     process.exit(1);
   } else {
-    console.log(`All ${cases.length} tests passed`);
+    console.log(`All ${results.length} tests passed`);
   }
 }

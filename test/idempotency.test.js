@@ -26,6 +26,13 @@ describe('planShipment', () => {
     assert.deepStrictEqual(plan.deductions.map(d => [d.product, d.qty]), [['GL', 8], ['IP', 5], ['AP', 1]]);
     assert.deepStrictEqual(plan.failed, ['NOPE9']);
   });
+
+  test('KIT-T / Kit-U are kits; items with no SKU are reported by name', () => {
+    const kits = { 'KIT-T': [{ product: 'GL', qty: 1 }, { product: 'MMB', qty: 1 }], 'KIT-U': [{ product: 'GL', qty: 1 }] };
+    const plan = planShipment([item('KIT-T', 2), item('Kit-U'), { sku: null, quantity: 1, name: 'Sample Kit - 3' }, { sku: '', quantity: 2 }], 'Firmolux', kits);
+    assert.deepStrictEqual(plan.deductions.map(d => [d.product, d.qty]), [['GL', 2], ['MMB', 2], ['GL', 1]]);
+    assert.deepStrictEqual(plan.failed, ['(no SKU) Sample Kit - 3 x1', '(no SKU) unnamed item x2']);
+  });
 });
 
 describe('processShipment (DB)', { skip: skipDb }, () => {
@@ -174,6 +181,13 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
     await pool.query('DROP TRIGGER fail_all ON inventory_audit; DROP FUNCTION fail_all();');
     await notify('', 'b4');
     assert.strictEqual(await qty(pool, 'MP'), 980);
+  });
+
+  test('a no-SKU item is logged to failedSkus by name', async () => {
+    batches.b6 = [{ shipmentId: 106, orderId: 6, orderNumber: 'W6', shipmentItems: [item('GL04'), { sku: null, quantity: 1, name: 'Sample Kit - 3' }] }];
+    await notify('', 'b6');
+    const { rows } = await pool.query("SELECT deductions FROM shipment_log WHERE deductions->>'shipmentId' = '106'");
+    assert.strictEqual(rows[0].deductions.failedSkus, '(no SKU) Sample Kit - 3 x1');
   });
 
   test('VIOLANTE route deducts under its own brand', async () => {
