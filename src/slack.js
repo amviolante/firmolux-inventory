@@ -36,6 +36,7 @@ async function sendSlackAlert(webhookUrl, product, currentQty, bucketsRemaining,
 
     const req = lib.request({
       hostname: url.hostname,
+      port: url.port || undefined,
       path: url.pathname + url.search,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
@@ -65,6 +66,7 @@ function postSlack(webhookUrl, message) {
 
     const req = lib.request({
       hostname: url.hostname,
+      port: url.port || undefined,
       path: url.pathname + url.search,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }

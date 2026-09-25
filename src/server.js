@@ -4,9 +4,10 @@ const { Pool } = require('pg');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const path = require('path');
-const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert, sendDeductionFailureAlert, buildReconcileMessage } = require('./slack');
+const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert, sendDeductionFailureAlert, buildReconcileMessage, sendReconcileSummary } = require('./slack');
 const { migrateShipmentIds, loadKits, processShipment, shipmentsFromResponse } = require('./shipments');
 const { runReconcile, parseStart } = require('./reconcile');
+const { startDailyReconcile } = require('./scheduler');
 const { initColorMatchSchema, mountColorMatchRoutes } = require('./color-match');
 
 const app = express();
@@ -463,7 +464,8 @@ app.get('/api/audit', requireAuth, async (req, res) => {
 
 // ─── API: Reconcile (on demand) ───────────────────────────────────────────────
 // Dry run unless ?apply=1. Applying needs RECONCILE_START (the physical count
-// time, ISO with offset) so nothing before the count is ever deducted.
+// time, ISO with offset) so nothing before the count is ever deducted, and
+// posts the same Slack summary as the 6am run.
 app.post('/api/reconcile', requireAuth, async (req, res) => {
   const apply = req.query.apply === '1';
   const days = Math.min(Math.max(parseInt(req.query.days || '7', 10) || 7, 1), 30);
@@ -476,6 +478,10 @@ app.post('/api/reconcile', requireAuth, async (req, res) => {
   if (apply && !start) return res.status(400).json({ error: 'RECONCILE_START is not set; only dry runs are allowed' });
   try {
     const summary = await runReconcile(pool, { days, start, dryRun: !apply });
+    if (apply && process.env.SLACK_WEBHOOK_URL) {
+      try { await sendReconcileSummary(process.env.SLACK_WEBHOOK_URL, summary); }
+      catch (err) { console.error('Reconcile Slack post failed:', err.message); }
+    }
     res.json({ summary, slack: buildReconcileMessage(summary) });
   } catch (err) {
     console.error('Reconcile error:', err);
@@ -668,6 +674,7 @@ async function checkAndAlert(pool, productCode) {
 initDB().then(() => {
   const label = COLOR_MATCH_ONLY ? 'Firmolux Color Match' : 'Firmolux Inventory';
   app.listen(PORT, () => console.log(`${label} running on port ${PORT} (APP_MODE=${APP_MODE})`));
+  if (!COLOR_MATCH_ONLY && process.env.RECONCILE_SCHEDULE !== 'off') startDailyReconcile(pool);
 }).catch(err => {
   console.error('Failed to init DB:', err);
   process.exit(1);

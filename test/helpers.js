@@ -39,7 +39,7 @@ function startServer(url, env = {}) {
   return new Promise((resolve, reject) => {
     const port = 30000 + Math.floor(Math.random() * 20000);
     const child = spawn(process.execPath, [path.join(__dirname, '../src/server.js')], {
-      env: { ...process.env, DATABASE_URL: url, PORT: String(port), SLACK_WEBHOOK_URL: '', APP_MODE: '', ...env },
+      env: { ...process.env, DATABASE_URL: url, PORT: String(port), SLACK_WEBHOOK_URL: '', APP_MODE: '', RECONCILE_SCHEDULE: 'off', ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
@@ -76,9 +76,12 @@ async function qty(pool, code) {
 // returning a JSON body (or { status, body }). Records every request.
 function fakeShipStation(routes) {
   const calls = [];
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
-    calls.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), auth: req.headers.authorization });
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    calls.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), auth: req.headers.authorization,
+      body: raw ? JSON.parse(raw) : null });
     const handler = routes[`${req.method} ${url.pathname}`];
     let out = handler ? handler(req, url) : { status: 404, body: { message: 'not found' } };
     if (!out || out.status === undefined) out = { status: 200, body: out };

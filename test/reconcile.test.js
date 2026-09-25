@@ -61,6 +61,36 @@ const shipment = (id, orderId, orderNumber, items, extra = {}) => ({
   voided: false, shipmentItems: items, ...extra,
 });
 
+describe('reconcileAndPost', () => {
+  const { reconcileAndPost } = require('../src/scheduler');
+  const env = process.env.RECONCILE_START;
+  after(() => { if (env === undefined) delete process.env.RECONCILE_START; else process.env.RECONCILE_START = env; });
+
+  test('does nothing without RECONCILE_START', async () => {
+    delete process.env.RECONCILE_START;
+    let ran = 0, sent = 0;
+    const out = await reconcileAndPost(null, { run: async () => { ran++; }, send: async () => { sent++; } });
+    assert.deepStrictEqual([out, ran, sent], [null, 0, 0]);
+  });
+
+  test('runs from RECONCILE_START and posts the summary', async () => {
+    process.env.RECONCILE_START = '2026-10-01T08:00:00-04:00';
+    let seen, posted;
+    const summary = { ok: 1 };
+    await reconcileAndPost('pool', { run: async (pool, o) => { seen = o; return summary; }, send: async (url, s) => { posted = s; } });
+    assert.strictEqual(seen.start.toISOString(), '2026-10-01T12:00:00.000Z');
+    assert.strictEqual(seen.days, 7);
+    assert.strictEqual(posted, summary);
+  });
+
+  test('a crash still posts, as an error summary', async () => {
+    process.env.RECONCILE_START = '2026-10-01T08:00:00-04:00';
+    let posted;
+    await reconcileAndPost('pool', { run: async () => { throw new Error('db gone'); }, send: async (url, s) => { posted = s; } });
+    assert.match(buildReconcileMessage(posted).blocks.map(b => b.text.text).join('\n'), /Errors, reconcile incomplete\*\n• all brands: db gone/);
+  });
+});
+
 describe('runReconcile (DB)', { skip: skipDb }, () => {
   let pool, ss;
   const F = { shipments: [], orders: [], byOrder: {} };
@@ -97,7 +127,7 @@ describe('runReconcile (DB)', { skip: skipDb }, () => {
       shipment(1, 11, 'R1', [item('GL20')]),                       // webhook already did it
       shipment(2, 12, 'R2', [item('MMB25', 2)]),                   // missed
       shipment(3, 13, 'R3', [item('IP25')], { daysAgo: 6 }),       // before the count
-      shipment(4, 14, 'R4', [item('AP20'), item('CB200')]),        // missed, partly unparseable
+      shipment(4, 14, 'R4', [item('AP20'), item('XYZ9'), item('CB200')]), // missed, partly unparseable, colorant ignored
       shipment(5, 15, 'R5', []),                                   // zero items
     ];
     await processShipment(pool, 'Firmolux', { shipmentId: 1, orderId: 11, orderNumber: 'R1', items: [item('GL20')] });
@@ -105,7 +135,7 @@ describe('runReconcile (DB)', { skip: skipDb }, () => {
     assert.deepStrictEqual(s.errors, []);
     assert.deepStrictEqual(s.reconciled.map(r => r.orderNumber), ['R2', 'R4']);
     assert.deepStrictEqual(s.totals.deducted, { MMB: 50, AP: 20 });
-    assert.deepStrictEqual(s.unparsed.map(r => [r.orderNumber, r.skus]), [['R4', ['CB200']]]);
+    assert.deepStrictEqual(s.unparsed.map(r => [r.orderNumber, r.skus]), [['R4', ['XYZ9']]]);
     assert.deepStrictEqual(s.zeroItems.map(r => r.orderNumber), ['R5']);
     assert.strictEqual(await qty(pool, 'GL'), 980);
     assert.strictEqual(await qty(pool, 'MMB'), 950);

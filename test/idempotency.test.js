@@ -29,9 +29,34 @@ describe('planShipment', () => {
 
   test('KIT-T / Kit-U are kits; items with no SKU are reported by name', () => {
     const kits = { 'KIT-T': [{ product: 'GL', qty: 1 }, { product: 'MMB', qty: 1 }], 'KIT-U': [{ product: 'GL', qty: 1 }] };
-    const plan = planShipment([item('KIT-T', 2), item('Kit-U'), { sku: null, quantity: 1, name: 'Sample Kit - 3' }, { sku: '', quantity: 2 }], 'Firmolux', kits);
+    const plan = planShipment([item('KIT-T', 2), item('Kit-U'), { sku: null, quantity: 1, name: 'Mystery Tub' }, { sku: '', quantity: 2 }], 'Firmolux', kits);
     assert.deepStrictEqual(plan.deductions.map(d => [d.product, d.qty]), [['GL', 2], ['MMB', 2], ['GL', 1]]);
-    assert.deepStrictEqual(plan.failed, ['(no SKU) Sample Kit - 3 x1', '(no SKU) unnamed item x2']);
+    assert.deepStrictEqual(plan.failed, ['(no SKU) Mystery Tub x1', '(no SKU) unnamed item x2']);
+  });
+});
+
+describe('ignore list', () => {
+  const { ignoredAs } = require('../src/ignore-list');
+  test('matches the non-inventory items and nothing real', () => {
+    for (const sku of ['CB200', 'CV200', 'CNN500', 'CG910-200', 'CRV200', 'CG2X200', 'cw1000', 'P825-S', 'spw1l', 'NEB200']) {
+      assert.ok(ignoredAs({ sku }), sku);
+    }
+    for (const name of ['Firmolux XL T-Shirt', 'Logo Hoodie', 'Dad Hat', 'Work shirt']) assert.ok(ignoredAs({ sku: null, name }), name);
+    for (const sku of ['GL04', 'MMB25', 'SAV', 'Chateau1', 'C200', 'XYZ9', 'MSM04']) assert.strictEqual(ignoredAs({ sku, name: sku }), null, sku);
+    assert.strictEqual(ignoredAs({ sku: null, name: 'Milano Silver - 1 Gallon (4kg) / Tinted' }), null);
+    assert.strictEqual(ignoredAs({ sku: 'GL04', name: 'Chateau Grassello' }), null);
+  });
+
+  test('ignored items are neither deducted nor failed; sample kits deduct nothing even with a parseable SKU', () => {
+    const plan = planShipment([
+      item('GL04'), item('CB200'), { sku: null, quantity: 1, name: 'Firmolux XL T-Shirt' },
+      { sku: 'GL04', quantity: 1, name: 'Sample Kit - 3' }, { sku: null, quantity: 1, name: 'Sample Kit - 5' }, item('NOPE9'),
+    ], 'Firmolux', {});
+    assert.deepStrictEqual(plan.deductions.map(d => [d.product, d.qty]), [['GL', 4]]);
+    assert.deepStrictEqual(plan.failed, ['NOPE9']);
+    assert.deepStrictEqual(plan.ignored, [
+      'CB200 x1 (colorant)', '(no SKU) Firmolux XL T-Shirt x1 (merch)', 'GL04 x1 (sample kit)', '(no SKU) Sample Kit - 5 x1 (sample kit)',
+    ]);
   });
 });
 
@@ -76,13 +101,23 @@ describe('processShipment (DB)', { skip: skipDb }, () => {
   });
 
   test('all-unparseable shipment is logged once and then counts as processed', async () => {
-    const r1 = await processShipment(pool, 'Firmolux', ship(4, 'A4', [item('CB200')]));
-    assert.deepStrictEqual([r1.status, r1.failed], ['deducted', ['CB200']]);
-    const r2 = await processShipment(pool, 'Firmolux', ship(4, 'A4', [item('CB200')]));
+    const r1 = await processShipment(pool, 'Firmolux', ship(4, 'A4', [item('XYZ9')]));
+    assert.deepStrictEqual([r1.status, r1.failed], ['deducted', ['XYZ9']]);
+    const r2 = await processShipment(pool, 'Firmolux', ship(4, 'A4', [item('XYZ9')]));
     assert.strictEqual(r2.status, 'duplicate');
     const { rows } = await pool.query("SELECT deductions FROM shipment_log WHERE deductions->>'shipmentId' = '4'");
     assert.strictEqual(rows.length, 1);
-    assert.strictEqual(rows[0].deductions.failedSkus, 'CB200');
+    assert.strictEqual(rows[0].deductions.failedSkus, 'XYZ9');
+  });
+
+  test('ignored items are logged once in shipment_log', async () => {
+    const r = await processShipment(pool, 'Firmolux', ship(7, 'A7', [item('SPW1L'), { sku: null, quantity: 1, name: 'Sample Kit - 3' }]));
+    assert.deepStrictEqual([r.status, r.failed], ['deducted', []]);
+    await processShipment(pool, 'Firmolux', ship(7, 'A7', [item('SPW1L')]));
+    const { rows } = await pool.query("SELECT deductions FROM shipment_log WHERE deductions->>'shipmentId' = '7'");
+    assert.strictEqual(rows.length, 1);
+    assert.deepStrictEqual(rows[0].deductions.ignored, ['SPW1L x1 (non-inventory)', '(no SKU) Sample Kit - 3 x1 (sample kit)']);
+    assert.strictEqual(rows[0].deductions.failedSkus, null);
   });
 
   test('a failure part-way rolls the whole shipment back, and a retry then deducts it', async () => {
@@ -117,6 +152,7 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
     let url;
     ({ pool, url } = await setupDb('inv_test_webhook'));
     ss = await fakeShipStation({
+      'POST /slack': () => ({ ok: true }),
       'GET /shipments': (req, u) => {
         const b = batches[u.searchParams.get('batchId')];
         return b === undefined ? { status: 500, body: { message: 'upstream down' } } : { shipments: b };
@@ -126,6 +162,7 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
       SHIPSTATION_API_BASE: ss.base,
       SHIPSTATION_API_KEY: 'k', SHIPSTATION_API_SECRET: 's',
       VIOLANTE_SHIPSTATION_API_KEY: 'vk', VIOLANTE_SHIPSTATION_API_SECRET: 'vs',
+      SLACK_WEBHOOK_URL: `${ss.base}/slack`,
     });
   });
   after(async () => {
@@ -163,10 +200,12 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
   });
 
   test('credentials are never sent to a resource_url off the ShipStation host', async () => {
-    const before = ss.calls.length;
+    const ssCalls = () => ss.calls.filter(c => c.path !== '/slack').length;
+    const before = ssCalls();
     const r = await notify('', 'b1', 'http://127.0.0.1:1');
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(ss.calls.length, before);
+    assert.strictEqual(ssCalls(), before);
+    assert.ok(ss.calls.some(c => c.path === '/slack' && /not ssapi|is not 127/.test(JSON.stringify(c.body))), 'reported to Slack');
   });
 
   test('a DB failure returns 200, deducts nothing, and the retry then deducts', async () => {
@@ -183,11 +222,29 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
     assert.strictEqual(await qty(pool, 'MP'), 980);
   });
 
-  test('a no-SKU item is logged to failedSkus by name', async () => {
-    batches.b6 = [{ shipmentId: 106, orderId: 6, orderNumber: 'W6', shipmentItems: [item('GL04'), { sku: null, quantity: 1, name: 'Sample Kit - 3' }] }];
+  const slackPosts = () => ss.calls.filter(c => c.path === '/slack').map(c => c.body.text);
+
+  test('a no-SKU item is logged to failedSkus by name and posted to Slack', async () => {
+    const before = slackPosts().length;
+    batches.b6 = [{ shipmentId: 106, orderId: 6, orderNumber: 'W6', shipmentItems: [item('GL04'), { sku: null, quantity: 1, name: 'Mystery Tub' }] }];
     await notify('', 'b6');
     const { rows } = await pool.query("SELECT deductions FROM shipment_log WHERE deductions->>'shipmentId' = '106'");
-    assert.strictEqual(rows[0].deductions.failedSkus, '(no SKU) Sample Kit - 3 x1');
+    assert.strictEqual(rows[0].deductions.failedSkus, '(no SKU) Mystery Tub x1');
+    assert.deepStrictEqual(slackPosts().slice(before), ['⚠️ Unparseable SKU on order W6 (Firmolux)']);
+  });
+
+  test('ignored items never post to Slack', async () => {
+    const before = slackPosts().length;
+    batches.b7 = [{ shipmentId: 107, orderId: 7, orderNumber: 'W7', shipmentItems: [
+      item('MMB25'), item('CNN500'), { sku: null, quantity: 1, name: 'Sample Kit - 3' }, { sku: null, quantity: 1, name: 'Firmolux XL T-Shirt' }] }];
+    await notify('', 'b7');
+    assert.deepStrictEqual(slackPosts().slice(before), []);
+    const { rows } = await pool.query("SELECT deductions FROM shipment_log WHERE deductions->>'shipmentId' = '107'");
+    assert.strictEqual(rows[0].deductions.ignored.length, 3);
+  });
+
+  test('a DB failure is posted to Slack', async () => {
+    assert.ok(slackPosts().some(t => /Deduction failed .* order W4/.test(t)));
   });
 
   test('VIOLANTE route deducts under its own brand', async () => {

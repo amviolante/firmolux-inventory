@@ -11,6 +11,7 @@
 // back together, so a failure part-way leaves nothing behind for the
 // reconcile job to trip over — it simply deducts the shipment next morning.
 const { parseSKU, kitCode } = require('./sku-parser');
+const { ignoredAs } = require('./ignore-list');
 
 async function migrateShipmentIds(client) {
   await client.query(`
@@ -28,16 +29,22 @@ async function loadKits(db) {
 }
 
 // Pure: what a shipment's items should deduct. Nothing is skipped silently:
-// an item with no SKU is reported in `failed` by name.
+// an item that can't be parsed goes to `failed` (no SKU → by name), unless
+// the ignore list (src/ignore-list.js) marks it non-inventory → `ignored`.
 function planShipment(items, brand, kits) {
   const deductions = [];
   const failed = [];
+  const ignored = [];
   for (const item of items || []) {
     const orderQty = item.quantity || 1;
-    if (!item.sku) {
-      failed.push(`(no SKU) ${item.name || 'unnamed item'} x${orderQty}`);
-      continue;
-    }
+    const label = `${item.sku || `(no SKU) ${item.name || 'unnamed item'}`} x${orderQty}`;
+    const skip = (why) => {
+      const as = ignoredAs(item);
+      if (as) ignored.push(`${label} (${as})`); else failed.push(why);
+    };
+    const always = ignoredAs(item, { alwaysOnly: true });
+    if (always) { ignored.push(`${label} (${always})`); continue; }
+    if (!item.sku) { skip(`(no SKU) ${item.name || 'unnamed item'} x${orderQty}`); continue; }
     const kit = kitCode(item.sku);
     if (kit) {
       for (const c of kits[kit] || []) {
@@ -46,10 +53,10 @@ function planShipment(items, brand, kits) {
       continue;
     }
     const parsed = parseSKU(item.sku, brand);
-    if (!parsed) { failed.push(item.sku); continue; }
+    if (!parsed) { skip(item.sku); continue; }
     deductions.push({ product: parsed.productCode, qty: parsed.qty * orderQty, sku: item.sku, orderQty, note: `${item.sku} x${orderQty}` });
   }
-  return { deductions, failed };
+  return { deductions, failed, ignored };
 }
 
 async function withShipmentLock(pool, brand, shipmentId, fn) {
@@ -129,9 +136,9 @@ async function processShipment(pool, brand, shipment, opts = {}) {
     await client.query(
       'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions, brand) VALUES ($1, $2, $3, $4, $5)',
       [(displayId + displayName).slice(0, 50), opts.source ? 'RECONCILE' : 'BATCH', 1,
-       JSON.stringify({ deductions: applied, failedSkus: plan.failed.join(' | ') || null, shipmentId }), brand]
+       JSON.stringify({ deductions: applied, failedSkus: plan.failed.join(' | ') || null, ignored: plan.ignored.length ? plan.ignored : undefined, shipmentId }), brand]
     );
-    return { status: 'deducted', deductions: applied, failed: plan.failed, rollback: !!opts.dryRun };
+    return { status: 'deducted', deductions: applied, failed: plan.failed, ignored: plan.ignored, rollback: !!opts.dryRun };
   });
 }
 
