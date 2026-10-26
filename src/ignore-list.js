@@ -17,6 +17,10 @@ const IGNORE_RULES = [
   { label: 'non-inventory', sku: 'NEB200' },
   // Merch. "Hat" is a whole word so names like "Chateau" don't match.
   { label: 'merch', text: /shirt|hoodie|\bhats?\b/i },
+  // Not inventoried (owner, 2026-10-26).
+  { label: 'non-inventory', text: /rasatura|marmorino classico/i },
+  // Shipping charges entered as line items ("UPS Next Day Air").
+  { label: 'shipping charge', namePattern: /^\s*(ups|fedex|usps|dhl)\b/i },
   // Sample kits deduct nothing.
   { label: 'sample kit', namePattern: /^\s*sample kit/i, always: true },
 ];

@@ -247,6 +247,17 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
     assert.ok(slackPosts().some(t => /Deduction failed .* order W4/.test(t)));
   });
 
+  test('a no-SKU item with a known name deducts, with a long name kept within the note column', async () => {
+    const longName = 'RIVO - 5 Gallons | 25kg / Tinted / ' + 'SW7551 Greek Villa '.repeat(12);
+    batches.b8 = [{ shipmentId: 108, orderId: 8, orderNumber: 'W8', shipmentItems: [{ sku: null, quantity: 2, name: longName }] }];
+    const before = await qty(pool, 'MMB');
+    const r = await notify('/violante', 'b8');
+    assert.deepStrictEqual(r.body.shipments.map(s => s.status), ['deducted']);
+    assert.strictEqual(await qty(pool, 'MMB'), before - 50);
+    const { rows } = await pool.query("SELECT note FROM inventory_audit WHERE shipment_id = '108'");
+    assert.ok(rows[0].note.length <= 200 && rows[0].note.startsWith('"RIVO'));
+  });
+
   test('VIOLANTE route deducts under its own brand', async () => {
     batches.b5 = [{ shipmentId: 101, orderId: 5, orderNumber: 'V5', shipmentItems: [item('LT05-SW7004')] }];
     await notify('/violante', 'b5');

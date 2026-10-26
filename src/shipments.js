@@ -12,6 +12,7 @@
 // reconcile job to trip over — it simply deducts the shipment next morning.
 const { parseSKU, kitCode } = require('./sku-parser');
 const { ignoredAs } = require('./ignore-list');
+const { parseItemName } = require('./name-map');
 
 async function migrateShipmentIds(client) {
   await client.query(`
@@ -28,9 +29,12 @@ async function loadKits(db) {
   return kits;
 }
 
-// Pure: what a shipment's items should deduct. Nothing is skipped silently:
-// an item that can't be parsed goes to `failed` (no SKU → by name), unless
-// the ignore list (src/ignore-list.js) marks it non-inventory → `ignored`.
+// Pure: what a shipment's items should deduct. Order per item:
+//   1. ignore rules marked `always` (sample kits)
+//   2. the SKU (kit, then parseSKU)
+//   3. the ignore list (src/ignore-list.js) → `ignored`
+//   4. the item name (src/name-map.js), for manual / freight orders
+//   5. otherwise `failed` → Slack. Nothing is skipped silently.
 function planShipment(items, brand, kits) {
   const deductions = [];
   const failed = [];
@@ -38,23 +42,33 @@ function planShipment(items, brand, kits) {
   for (const item of items || []) {
     const orderQty = item.quantity || 1;
     const label = `${item.sku || `(no SKU) ${item.name || 'unnamed item'}`} x${orderQty}`;
-    const skip = (why) => {
-      const as = ignoredAs(item);
-      if (as) ignored.push(`${label} (${as})`); else failed.push(why);
-    };
     const always = ignoredAs(item, { alwaysOnly: true });
     if (always) { ignored.push(`${label} (${always})`); continue; }
-    if (!item.sku) { skip(`(no SKU) ${item.name || 'unnamed item'} x${orderQty}`); continue; }
-    const kit = kitCode(item.sku);
-    if (kit) {
+    const addKit = (kit, note) => {
       for (const c of kits[kit] || []) {
-        deductions.push({ product: c.product, qty: c.qty * orderQty, reason: `${kit} x${orderQty}`, note: `${kit} x${orderQty}` });
+        deductions.push({ product: c.product, qty: c.qty * orderQty, reason: `${kit} x${orderQty}`, note });
       }
+    };
+    if (item.sku) {
+      const kit = kitCode(item.sku);
+      if (kit) { addKit(kit, `${kit} x${orderQty}`); continue; }
+      const parsed = parseSKU(item.sku, brand);
+      if (parsed) {
+        deductions.push({ product: parsed.productCode, qty: parsed.qty * orderQty, sku: item.sku, orderQty, note: `${item.sku} x${orderQty}` });
+        continue;
+      }
+    }
+    const as = ignoredAs(item);
+    if (as) { ignored.push(`${label} (${as})`); continue; }
+    const byName = parseItemName(item.name);
+    if (byName && byName.kit) { addKit(byName.kit, `"${item.name}" x${orderQty} (by name)`); continue; }
+    if (byName && byName.productCode) {
+      deductions.push({ product: byName.productCode, qty: byName.qty * orderQty, sku: item.sku || null, orderQty,
+        byName: item.name, note: `"${item.name}" x${orderQty} (by name)` });
       continue;
     }
-    const parsed = parseSKU(item.sku, brand);
-    if (!parsed) { skip(item.sku); continue; }
-    deductions.push({ product: parsed.productCode, qty: parsed.qty * orderQty, sku: item.sku, orderQty, note: `${item.sku} x${orderQty}` });
+    const what = item.sku || `(no SKU) ${item.name || 'unnamed item'} x${orderQty}`;
+    failed.push(byName && byName.error ? `${what} (${byName.error})` : what);
   }
   return { deductions, failed, ignored };
 }
@@ -125,8 +139,8 @@ async function processShipment(pool, brand, shipment, opts = {}) {
       await client.query(
         `INSERT INTO inventory_audit (product_code, change_type, delta_qty, qty_before, qty_after, source, note, brand, shipment_id)
          VALUES ($1, 'shipment', $2, $3, $4, $5, $6, $7, $8)`,
-        [d.product, -d.qty, after + d.qty, after, source,
-         opts.source ? `${orderTag}: ${d.note}` : d.note, brand, shipmentId]
+        [d.product, -d.qty, after + d.qty, after, source.slice(0, 100),
+         (opts.source ? `${orderTag}: ${d.note}` : d.note).slice(0, 200), brand, shipmentId]
       );
       applied.push({ product: d.product, qty: d.qty, ...(d.sku ? { sku: d.sku, orderQty: d.orderQty } : { reason: d.reason }) });
     }
