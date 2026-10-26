@@ -14,6 +14,7 @@
 const { processShipment, reverseShipment, loadKits } = require('./shipments');
 const { shipStationClient } = require('./shipstation');
 const { zonedToUtc, dateIn, SHIPSTATION_TZ } = require('./time');
+const { classifyZeroItemShipment } = require('./replacements');
 
 function brandsFromEnv() {
   return [
@@ -82,12 +83,14 @@ async function reconcileBrand(pool, ss, brand, { since, start, dryRun, kits, sum
         if (r.status === 'reversed') summary.reversed.push({ ...ref, items: r.reversed });
         continue;
       }
-      const items = s.shipmentItems || [];
-      const r = await processShipment(pool, brand, {
+      const shipment = {
         shipmentId: s.shipmentId, orderId: s.orderId, orderNumber: s.orderNumber,
-        customerName: s.shipTo && s.shipTo.name, items,
-      }, { source: 'reconcile', kits, dryRun });
-      record(summary, ref, r, { items, noLabel: false });
+        customerName: s.shipTo && s.shipTo.name, createDate: s.createDate, items: s.shipmentItems || [],
+      };
+      const prepared = await prepareShipment(ss, shipment);
+      const r = await processShipment(pool, brand, prepared.shipment, { source: 'reconcile', kits, dryRun, ...prepared.opts });
+      record(summary, { ...ref, ...(prepared.kind === 'replacement' ? { replacement: true } : {}) }, r,
+        { flagNoItems: prepared.kind === 'first-label', noLabel: false });
     } catch (err) {
       summary.errors.push({ ...ref, error: describe(err) });
     }
@@ -117,20 +120,38 @@ async function reconcileBrand(pool, ss, brand, { since, start, dryRun, kits, sum
         shipmentId: `order:${o.orderId}`, orderId: o.orderId, orderNumber: o.orderNumber,
         customerName: o.shipTo && o.shipTo.name, items,
       }, { source: 'reconcile', kits, dryRun });
-      record(summary, { ...ref, service: [o.carrierCode, o.serviceCode, o.requestedShippingService].filter(Boolean).join(' / ') }, r, { items, noLabel: true });
+      record(summary, { ...ref, service: [o.carrierCode, o.serviceCode, o.requestedShippingService].filter(Boolean).join(' / ') }, r, { flagNoItems: items.length === 0, noLabel: true });
     } catch (err) {
       summary.errors.push({ ...ref, error: describe(err) });
     }
   }
 }
 
-function record(summary, ref, r, { items, noLabel }) {
+// Labels with no items: extra box, replacement or first label
+// (src/replacements.js). Returns the shipment to process and its options.
+async function prepareShipment(ss, shipment) {
+  if (shipment.items.length > 0) return { kind: 'items', shipment, opts: {} };
+  const c = await classifyZeroItemShipment(ss, shipment);
+  if (c.kind === 'extra-box') {
+    return { kind: c.kind, shipment, opts: { logExtra: { extraBoxOf: c.firstShipmentId } } };
+  }
+  if (c.kind === 'replacement') {
+    return {
+      kind: c.kind,
+      shipment: { ...shipment, items: c.items },
+      opts: { notePrefix: 'replacement, copied order items', logExtra: { replacementOf: c.firstShipmentId, copiedOrderItems: true } },
+    };
+  }
+  return { kind: 'first-label', shipment, opts: {} };
+}
+
+function record(summary, ref, r, { flagNoItems, noLabel }) {
   if (r.status === 'duplicate') return;
   if (r.status === 'covered-by-no-label') {
     summary.review.push({ ...ref, reason: 'label created after the order was already reconciled as shipped-with-no-label; not deducted' });
     return;
   }
-  if (items.length === 0) summary.zeroItems.push({ ...ref, noLabel });
+  if (flagNoItems) summary.zeroItems.push({ ...ref, noLabel });
   if (r.deductions.length) summary.reconciled.push({ ...ref, noLabel, items: r.deductions.map(d => ({ product: d.product, qty: d.qty })) });
   if (r.failed.length) summary.unparsed.push({ ...ref, noLabel, skus: r.failed });
 }
@@ -146,4 +167,4 @@ function describe(err) {
   return err.message;
 }
 
-module.exports = { runReconcile, parseStart, brandsFromEnv };
+module.exports = { runReconcile, parseStart, brandsFromEnv, prepareShipment };

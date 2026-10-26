@@ -199,7 +199,8 @@ function buildReconcileMessage(summary) {
   const fmtTotals = (totals, sign = '') => fmtQty(Object.entries(totals || {})
     .sort((a, b) => b[1] - a[1]).map(([product, qty]) => ({ product, qty })), sign) || '—';
   const who = r => `${r.brand} #${r.orderNumber}`;
-  const label = r => (r.shipmentId || '').startsWith('order:') ? 'no label, marked shipped' : `label ${r.shipmentId}`;
+  const label = r => (r.shipmentId || '').startsWith('order:') ? 'no label, marked shipped'
+    : `label ${r.shipmentId}${r.replacement ? ' (replacement, copied order items)' : ''}`;
   const list = (rows, line, max = 15) => {
     const out = rows.slice(0, max).map(r => `• ${line(r)}`);
     if (rows.length > max) out.push(`• …and ${rows.length - max} more (see /api/reconcile)`);
@@ -224,7 +225,7 @@ function buildReconcileMessage(summary) {
   section('Deducted now (webhook missed these)', list(summary.reconciled, r => `${who(r)}, ${label(r)}: ${fmtQty(r.items)}`));
   section('Voided labels put back', list(summary.reversed, r => `${who(r)}, label ${r.shipmentId}: ${fmtQty(r.items, '+')}`));
   section('Could not parse, adjust by hand', list(summary.unparsed, r => `${who(r)}, ${label(r)}: ${r.skus.map(s => `\`${s}\``).join(', ')}`));
-  section('Shipments with no line items, check contents', list(summary.zeroItems, r => `${who(r)}, ${label(r)}`));
+  section('First label with no line items, check contents', list(summary.zeroItems, r => `${who(r)}, ${label(r)}`));
   section('Needs review', list(summary.review, r => `${who(r)}, ${label(r)}: ${r.reason}`));
   section('Errors, reconcile incomplete', list(summary.errors, r => `${r.orderNumber ? who(r) : r.brand}: ${r.error}`));
   return { text: title, blocks };

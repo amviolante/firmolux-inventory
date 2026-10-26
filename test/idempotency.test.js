@@ -148,12 +148,15 @@ describe('processShipment (DB)', { skip: skipDb }, () => {
 describe('webhook (server.js end to end)', { skip: skipDb }, () => {
   let pool, srv, ss;
   const batches = {};
+  const byOrder = {};
   before(async () => {
     let url;
     ({ pool, url } = await setupDb('inv_test_webhook'));
     ss = await fakeShipStation({
       'POST /slack': () => ({ ok: true }),
+      'GET /orders/90': () => ({ orderId: 90, orderNumber: 'R90', items: [item('IP25', 2)] }),
       'GET /shipments': (req, u) => {
+        if (u.searchParams.get('orderId')) return { shipments: byOrder[u.searchParams.get('orderId')] || [] };
         const b = batches[u.searchParams.get('batchId')];
         return b === undefined ? { status: 500, body: { message: 'upstream down' } } : { shipments: b };
       },
@@ -256,6 +259,33 @@ describe('webhook (server.js end to end)', { skip: skipDb }, () => {
     assert.strictEqual(await qty(pool, 'MMB'), before - 50);
     const { rows } = await pool.query("SELECT note FROM inventory_audit WHERE shipment_id = '108'");
     assert.ok(rows[0].note.length <= 200 && rows[0].note.startsWith('"RIVO'));
+  });
+
+  test('label with no items: same-day extra box is silent, a later one deducts a copy of the order once', async () => {
+    const first = { shipmentId: 901, orderId: 90, orderNumber: 'R90', createDate: '2026-10-20T09:00:00.0000000', shipmentItems: [item('IP25', 2)] };
+    const box = { shipmentId: 902, orderId: 90, orderNumber: 'R90', createDate: '2026-10-20T09:03:00.0000000', shipmentItems: [] };
+    const repl = { shipmentId: 903, orderId: 90, orderNumber: 'R90', createDate: '2026-10-24T11:00:00.0000000', shipmentItems: [] };
+    byOrder[90] = [first, box, repl];
+    batches.r1 = [first, box];
+    batches.r2 = [repl];
+    const ip = await qty(pool, 'IP');
+    const before = slackPosts().length;
+    const r1 = await notify('', 'r1');
+    assert.deepStrictEqual(r1.body.shipments.map(s => s.kind), ['items', 'extra-box']);
+    assert.strictEqual(await qty(pool, 'IP'), ip - 50);
+    const r2 = await notify('', 'r2');
+    await notify('', 'r2');
+    assert.deepStrictEqual(r2.body.shipments.map(s => [s.kind, s.status]), [['replacement', 'deducted']]);
+    assert.strictEqual(await qty(pool, 'IP'), ip - 100);
+    assert.deepStrictEqual(slackPosts().slice(before), [], 'no empty-shipment alerts for boxes or replacements');
+  });
+
+  test('a first label with no items alerts once and deducts nothing', async () => {
+    batches.r3 = [{ shipmentId: 904, orderId: 91, orderNumber: 'R91', createDate: '2026-10-24T11:00:00.0000000', shipmentItems: [] }];
+    const before = slackPosts().length;
+    await notify('', 'r3');
+    await notify('', 'r3');
+    assert.deepStrictEqual(slackPosts().slice(before), ['🔎 Empty shipment on order R91 — needs human review']);
   });
 
   test('VIOLANTE route deducts under its own brand', async () => {

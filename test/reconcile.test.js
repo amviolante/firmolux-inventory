@@ -108,6 +108,7 @@ describe('runReconcile (DB)', { skip: skipDb }, () => {
         return { shipments: d.shipments, pages: 1 };
       },
       'GET /orders': req => ({ orders: who(req).orders, pages: 1 }),
+      'GET /orders/70': () => ({ orderId: 70, orderNumber: 'Z1', items: [item('GL20', 2), { sku: null, name: 'Shipping', adjustment: true }] }),
     });
     process.env.SHIPSTATION_API_BASE = ss.base;
   });
@@ -208,6 +209,32 @@ describe('runReconcile (DB)', { skip: skipDb }, () => {
     assert.deepStrictEqual(s.reconciled.map(r => r.orderNumber), ['R9']);
     assert.match(buildReconcileMessage(s).blocks.map(b => b.text.text).join('\n'), /Errors, reconcile incomplete\*\n• VIOLANTE: ShipStation HTTP 500/);
     V.fail = false;
+  });
+
+  test('labels with no items: extra box deducts nothing, replacement deducts a copy once, first label is flagged', async () => {
+    const first = shipment(71, 70, 'Z1', [item('GL20', 2)], { daysAgo: 3 });
+    const extraBox = shipment(72, 70, 'Z1', [], { createDate: first.createDate.replace(/T(\d\d)/, (m, h) => `T${String(Math.min(+h + 1, 23)).padStart(2, '0')}`) });
+    const replacement = shipment(73, 70, 'Z1', [], { daysAgo: 1 });
+    const lonely = shipment(74, 75, 'Z2', [], { daysAgo: 1 });
+    F.byOrder[70] = [first, extraBox, replacement];
+    F.byOrder[75] = [lonely];
+    F.shipments.push(first, extraBox, replacement, lonely);
+    const gl = await qty(pool, 'GL');
+    const s = await run();
+    assert.deepStrictEqual(s.errors, []);
+    const z = s.reconciled.filter(r => r.orderNumber === 'Z1');
+    assert.deepStrictEqual(z.map(r => [r.shipmentId, r.replacement || false, r.items]),
+      [['71', false, [{ product: 'GL', qty: 40 }]], ['73', true, [{ product: 'GL', qty: 40 }]]]);
+    assert.deepStrictEqual(s.zeroItems.map(r => r.shipmentId), ['74']);
+    assert.strictEqual(await qty(pool, 'GL'), gl - 80);
+    const { rows } = await pool.query("SELECT deductions FROM shipment_log WHERE deductions->>'shipmentId' IN ('72','73') ORDER BY deductions->>'shipmentId'");
+    assert.deepStrictEqual(rows.map(r => [r.deductions.extraBoxOf, r.deductions.replacementOf]), [['71', undefined], [undefined, '71']]);
+    const note = await pool.query("SELECT note FROM inventory_audit WHERE shipment_id = '73'");
+    assert.match(note.rows[0].note, /^Order #Z1: replacement, copied order items: GL20 x2$/);
+    assert.match(buildReconcileMessage(s).blocks.map(b => b.text.text).join('\n'), /Firmolux #Z1, label 73 \(replacement, copied order items\): GL 40 kg/);
+    const again = await run();
+    assert.deepStrictEqual([again.reconciled.length, again.zeroItems.length], [0, 0]);
+    assert.strictEqual(await qty(pool, 'GL'), gl - 80);
   });
 
   test('without a start date everything in the window is eligible (dry run only)', async () => {

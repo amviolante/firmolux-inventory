@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const path = require('path');
 const { sendSlackAlert, sendSkuParseFailureAlert, sendEmptyShipmentAlert, sendShipmentFetchFailureAlert, sendDeductionFailureAlert, buildReconcileMessage, sendReconcileSummary } = require('./slack');
 const { migrateShipmentIds, loadKits, processShipment, shipmentsFromResponse } = require('./shipments');
-const { runReconcile, parseStart } = require('./reconcile');
+const { runReconcile, parseStart, prepareShipment } = require('./reconcile');
+const { shipStationClient } = require('./shipstation');
 const { startDailyReconcile } = require('./scheduler');
 const { initColorMatchSchema, mountColorMatchRoutes } = require('./color-match');
 
@@ -527,19 +528,18 @@ async function handleShipmentWebhook(req, res, brand, credentials) {
     }
 
     const kits = await loadKits(pool);
+    const ss = shipStationClient(credentials);
     const results = [];
     for (const shipment of shipments) {
       const orderLabel = shipment.orderNumber || shipment.orderId || null;
       console.log(`[${brand}] Shipment ${shipment.shipmentId} (order ${orderLabel}): ${shipment.items.length} items`);
 
-      if (shipment.items.length === 0) {
-        // Zero items → human review, not an error.
-        await slack('empty-shipment', () => sendEmptyShipmentAlert(webhookUrl, { orderNumber: orderLabel }));
-      }
-
-      let result;
+      let result, prepared;
       try {
-        result = await processShipment(pool, brand, shipment, { kits });
+        // No items → extra box, replacement (copy of the order) or a first
+        // label that needs a human. See src/replacements.js.
+        prepared = await prepareShipment(ss, shipment);
+        result = await processShipment(pool, brand, prepared.shipment, { kits, ...prepared.opts });
       } catch (err) {
         console.error(`[${brand}] Deduction failed for shipment ${shipment.shipmentId}:`, err);
         await slack('deduction-failure', () => sendDeductionFailureAlert(webhookUrl, {
@@ -549,8 +549,11 @@ async function handleShipmentWebhook(req, res, brand, credentials) {
         continue;
       }
       console.log(`[${brand}] Shipment ${shipment.shipmentId}: ${result.status}, ${result.deductions.length} deductions`);
-      results.push({ shipmentId: shipment.shipmentId, status: result.status, deductions: result.deductions });
+      results.push({ shipmentId: shipment.shipmentId, status: result.status, kind: prepared.kind, deductions: result.deductions });
       if (result.status === 'duplicate') continue;
+      if (prepared.kind === 'first-label') {
+        await slack('empty-shipment', () => sendEmptyShipmentAlert(webhookUrl, { orderNumber: orderLabel }));
+      }
 
       if (result.failed.length > 0) {
         console.log(`⚠️ Unparseable SKU alert for order ${orderLabel}: ${result.failed.join(' | ')}`);

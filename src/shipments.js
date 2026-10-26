@@ -101,7 +101,7 @@ async function isProcessed(client, brand, shipmentId) {
 }
 
 // shipment: { shipmentId, orderId, orderNumber, customerName, items }
-// opts: { source, kits, dryRun }
+// opts: { source, kits, dryRun, notePrefix, logExtra (merged into the shipment_log JSON) }
 // Returns { status: 'deducted' | 'duplicate' | 'covered-by-no-label', deductions, failed }
 async function processShipment(pool, brand, shipment, opts = {}) {
   const shipmentId = String(shipment.shipmentId);
@@ -140,7 +140,7 @@ async function processShipment(pool, brand, shipment, opts = {}) {
         `INSERT INTO inventory_audit (product_code, change_type, delta_qty, qty_before, qty_after, source, note, brand, shipment_id)
          VALUES ($1, 'shipment', $2, $3, $4, $5, $6, $7, $8)`,
         [d.product, -d.qty, after + d.qty, after, source.slice(0, 100),
-         (opts.source ? `${orderTag}: ${d.note}` : d.note).slice(0, 200), brand, shipmentId]
+         ((opts.source ? `${orderTag}: ` : '') + (opts.notePrefix ? `${opts.notePrefix}: ` : '') + d.note).slice(0, 200), brand, shipmentId]
       );
       applied.push({ product: d.product, qty: d.qty, ...(d.sku ? { sku: d.sku, orderQty: d.orderQty } : { reason: d.reason }) });
     }
@@ -150,7 +150,7 @@ async function processShipment(pool, brand, shipment, opts = {}) {
     await client.query(
       'INSERT INTO shipment_log (shipstation_order_id, sku, quantity, deductions, brand) VALUES ($1, $2, $3, $4, $5)',
       [(displayId + displayName).slice(0, 50), opts.source ? 'RECONCILE' : 'BATCH', 1,
-       JSON.stringify({ deductions: applied, failedSkus: plan.failed.join(' | ') || null, ignored: plan.ignored.length ? plan.ignored : undefined, shipmentId }), brand]
+       JSON.stringify({ deductions: applied, failedSkus: plan.failed.join(' | ') || null, ignored: plan.ignored.length ? plan.ignored : undefined, shipmentId, ...(opts.logExtra || {}) }), brand]
     );
     return { status: 'deducted', deductions: applied, failed: plan.failed, ignored: plan.ignored, rollback: !!opts.dryRun };
   });
@@ -208,6 +208,7 @@ function shipmentsFromResponse(parsed) {
       orderId: s.orderId,
       orderNumber: s.orderNumber,
       customerName: s.customerName || (s.shipTo && s.shipTo.name) || null,
+      createDate: s.createDate,
       items: s.shipmentItems || [],
     }));
 }
